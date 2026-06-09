@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚽ World Cup 2026 Sweep</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --pitch: #1a4a2e;
+    --pitch-light: #2d6b46;
+    --gold: #f5c842;
+    --gold-dim: #c9a020;
+    --cream: #f9f5e8;
+    --ink: #1c1c1e;
+    --mid: #4a4a4f;
+    --line: rgba(255,255,255,0.12);
+    --red: #e84040;
+    --green-score: #3ecf6a;
+    --blue-score: #4ea8de;
+    --tier1: #e84040;
+    --tier2: #e87c40;
+    --tier3: #e8c840;
+    --tier4: #6abf5e;
+    --tier5: #4ea8de;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d1f15;
+    color: var(--cream);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header {
+    background: linear-gradient(135deg, var(--pitch) 0%, #0d3d22 100%);
+    border-bottom: 3px solid var(--gold);
+    padding: 24px 32px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .header-left p {
+    font-size: 12px;
+    color: rgba(249,245,232,0.6);
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+  }
+  .header-right {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .pot-badge {
+    background: var(--gold);
+    color: var(--ink);
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .pot-badge span { display: block; font-size: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 1px; }
+  .last-updated {
+    font-size: 11px;
+    color: rgba(249,245,232,0.5);
+    text-align: right;
+    line-height: 1.6;
+  }
+  .refresh-btn {
+    background: rgba(245,200,66,0.15);
+    border: 1px solid rgba(245,200,66,0.35);
+    color: var(--gold);
+    font-family: 'Oswald', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover { background: rgba(245,200,66,0.25); }
+  .refresh-btn.spinning { opacity: 0.6; pointer-events: none; }
+
+  .nav-tabs {
+    background: #0d1f15;
+    border-bottom: 1px solid rgba(245,200,66,0.2);
+    padding: 0 32px;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    color: rgba(249,245,232,0.55);
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 12px 18px 10px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .tab-btn:hover { color: var(--cream); }
+  .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+  .panel { display: none; padding: 28px 32px; }
+  .panel.active { display: block; }
+
+  /* STATUS BANNER */
+  .status-banner {
+    border-radius: 6px;
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .status-banner.loading { background: rgba(78,168,222,0.12); border: 1px solid rgba(78,168,222,0.3); color: #4ea8de; }
+  .status-banner.success { background: rgba(62,207,106,0.1); border: 1px solid rgba(62,207,106,0.3); color: #3ecf6a; }
+  .status-banner.error   { background: rgba(232,64,64,0.1);  border: 1px solid rgba(232,64,64,0.3);  color: #e84040; }
+  .status-banner.setup   { background: rgba(245,200,66,0.1); border: 1px solid rgba(245,200,66,0.3); color: var(--gold); }
+
+  /* SETUP CARD */
+  .setup-card {
+    background: var(--pitch);
+    border: 1px solid rgba(245,200,66,0.25);
+    border-radius: 8px;
+    padding: 28px 32px;
+    max-width: 680px;
+    margin: 0 auto 32px;
+  }
+  .setup-card h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 20px;
+    color: var(--gold);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .setup-steps { counter-reset: step; }
+  .setup-step {
+    counter-increment: step;
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+  .setup-step::before {
+    content: counter(step);
+    background: var(--gold);
+    color: var(--ink);
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .setup-step-content { flex: 1; }
+  .setup-step-content strong { color: var(--cream); display: block; margin-bottom: 4px; }
+  .setup-step-content p { font-size: 12px; color: rgba(249,245,232,0.6); line-height: 1.6; }
+  .setup-step-content a { color: var(--gold); }
+  .url-input-wrap {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+  }
+  .url-input {
+    flex: 1;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+    color: var(--cream);
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    padding: 8px 12px;
+  }
+  .url-input:focus { outline: none; border-color: var(--gold); }
+  .url-input::placeholder { color: rgba(249,245,232,0.3); }
+  .connect-btn {
+    background: var(--gold);
+    color: var(--ink);
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .connect-btn:hover { opacity: 0.85; }
+  .code-snippet {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #a8d8a8;
+    margin-top: 6px;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+
+  /* LEADERBOARD */
+  .leaderboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .lb-card {
+    background: linear-gradient(135deg, var(--pitch) 0%, #162e1e 100%);
+    border: 1px solid rgba(245,200,66,0.15);
+    border-radius: 8px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.15s;
+  }
+  .lb-card:hover { transform: translateY(-2px); }
+  .lb-card .rank-bg {
+    position: absolute;
+    top: 10px; right: 14px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 44px;
+    font-weight: 700;
+    color: rgba(245,200,66,0.1);
+    line-height: 1;
+    pointer-events: none;
+  }
+  .lb-card.rank-1 { border-color: var(--gold); }
+  .lb-card.rank-1 .rank-bg { color: rgba(245,200,66,0.2); }
+  .lb-card.rank-2 { border-color: rgba(192,192,192,0.35); }
+  .lb-card.rank-3 { border-color: rgba(205,127,50,0.35); }
+  .lb-name { font-family: 'Oswald', sans-serif; font-size: 20px; font-weight: 600; color: var(--cream); margin-bottom: 4px; }
+  .lb-pts { font-family: 'Oswald', sans-serif; font-size: 38px; font-weight: 700; color: var(--gold); line-height: 1; }
+  .lb-pts span { font-size: 14px; font-weight: 400; color: rgba(249,245,232,0.5); margin-left: 4px; }
+  .lb-teams { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .team-chip {
+    background: rgba(255,255,255,0.07);
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    color: rgba(249,245,232,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .lb-breakdown { margin-top: 8px; font-size: 11px; color: rgba(249,245,232,0.4); }
+
+  /* SCORECARDS */
+  .participant-section { margin-bottom: 40px; }
+  .participant-header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid rgba(245,200,66,0.3);
+  }
+  .participant-header h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .participant-total-pts {
+    font-family: 'Oswald', sans-serif;
+    font-size: 18px;
+    color: var(--cream);
+    background: var(--pitch-light);
+    padding: 2px 12px;
+    border-radius: 4px;
+  }
+  .table-wrap { overflow-x: auto; }
+  table.scorecard {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    min-width: 860px;
+  }
+  table.scorecard th {
+    background: #162e1e;
+    color: rgba(249,245,232,0.7);
+    font-family: 'Oswald', sans-serif;
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 7px 8px;
+    text-align: center;
+    border-bottom: 1px solid rgba(245,200,66,0.2);
+    white-space: nowrap;
+  }
+  table.scorecard th.team-col { text-align: left; min-width: 130px; }
+  table.scorecard th.group-col { background: #1c3a28; color: #6abf5e; }
+  table.scorecard th.ko-col { background: #1a2e40; color: #4ea8de; }
+  table.scorecard th.bonus-col { background: #2e1f0a; color: #f5a442; }
+  table.scorecard th.total-col { background: #2a1a2e; color: #c97ae8; }
+  table.scorecard td {
+    padding: 6px 8px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: rgba(249,245,232,0.85);
+  }
+  table.scorecard td.team-col { text-align: left; font-weight: 500; color: var(--cream); }
+  table.scorecard tr:hover td { background: rgba(255,255,255,0.03); }
+  .tier-badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .tier-1 { background: var(--tier1); } .tier-2 { background: var(--tier2); }
+  .tier-3 { background: var(--tier3); } .tier-4 { background: var(--tier4); }
+  .tier-5 { background: var(--tier5); }
+  .pts-cell { font-weight: 600; min-width: 32px; }
+  .pts-cell.has-pts { color: var(--green-score); }
+  .pts-cell.zero { color: rgba(249,245,232,0.22); }
+  .total-row td {
+    background: rgba(245,200,66,0.06) !important;
+    color: var(--gold) !important;
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    border-top: 1px solid rgba(245,200,66,0.25);
+  }
+  .total-row td.team-col { color: var(--gold) !important; }
+
+  /* SCORING KEY */
+  .scoring-key {
+    background: var(--pitch);
+    border: 1px solid rgba(245,200,66,0.15);
+    border-radius: 6px;
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+  .scoring-key-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 12px;
+    color: rgba(249,245,232,0.45);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    width: 100%;
+    margin-bottom: 2px;
+  }
+  .score-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .score-val {
+    background: rgba(245,200,66,0.15);
+    color: var(--gold);
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 1px 8px;
+    border-radius: 3px;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  /* ALLOCATION */
+  .allocation-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 28px; }
+  .tier-col h3 {
+    font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 7px 10px; border-radius: 4px 4px 0 0; margin-bottom: 6px;
+  }
+  .tier-col.t1 h3 { background: rgba(232,64,64,0.2); color: #e84040; }
+  .tier-col.t2 h3 { background: rgba(232,124,64,0.2); color: #e87c40; }
+  .tier-col.t3 h3 { background: rgba(232,200,64,0.2); color: #e8c840; }
+  .tier-col.t4 h3 { background: rgba(106,191,94,0.2); color: #6abf5e; }
+  .tier-col.t5 h3 { background: rgba(78,168,222,0.2); color: #4ea8de; }
+  .tier-team-item {
+    padding: 5px 8px; font-size: 11px;
+    display: flex; flex-direction: column; gap: 2px;
+    border-radius: 3px; margin-bottom: 4px;
+    background: rgba(255,255,255,0.04);
+  }
+  .tier-team-item .team-name { color: var(--cream); }
+  .tier-team-item .meta { display: flex; justify-content: space-between; }
+  .tier-team-item .assignee { font-size: 10px; font-weight: 600; color: var(--gold); text-transform: uppercase; letter-spacing: 0.5px; }
+  .tier-team-item .odds-tag { font-size: 10px; color: rgba(249,245,232,0.35); }
+
+  .section-label {
+    font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 600;
+    color: rgba(249,245,232,0.45); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px;
+  }
+
+  /* SPINNER */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    display: inline-block;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 768px) {
+    header { padding: 14px 16px; flex-wrap: wrap; gap: 10px; }
+    .header-left h1 { font-size: 20px; }
+    .panel { padding: 16px; }
+    .allocation-grid { grid-template-columns: repeat(2,1fr); }
+    .nav-tabs { padding: 0 12px; }
+    .setup-card { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>⚽ World Cup 2026 &mdash; Sweep</h1>
+    <p>9 Participants · 48 Teams · $20 Buy-in · 5 Tiers by Sportsbet Odds</p>
+  </div>
+  <div class="header-right">
+    <button class="refresh-btn" onclick="fetchAndRender(true)" id="refreshBtn">↻ Refresh</button>
+    <div class="last-updated" id="lastUpdated">–</div>
+    <div class="pot-badge"><span>Prize Pool</span>$180</div>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <button class="tab-btn active" data-tab="leaderboard" onclick="showTab(this)">🏆 Leaderboard</button>
+  <button class="tab-btn" data-tab="scorecards" onclick="showTab(this)">📊 Scorecards</button>
+  <button class="tab-btn" data-tab="allocation" onclick="showTab(this)">🎲 Team Draw</button>
+  <button class="tab-btn" data-tab="setup" onclick="showTab(this)">⚙️ Setup</button>
+</nav>
+
+<!-- LEADERBOARD -->
+<div id="panel-leaderboard" class="panel active">
+  <div id="lb-status"></div>
+  <div class="leaderboard-grid" id="leaderboardGrid">
+    <div class="status-banner loading"><span class="spinner"></span> Loading scores from Google Sheets…</div>
+  </div>
+</div>
+
+<!-- SCORECARDS -->
+<div id="panel-scorecards" class="panel">
+  <div class="scoring-key">
+    <div class="scoring-key-label">Scoring Key</div>
+    <div class="score-item"><span class="score-val">3</span> Win</div>
+    <div class="score-item"><span class="score-val">1</span> Draw</div>
+    <div class="score-item"><span class="score-val">0</span> Loss</div>
+    <div class="score-item"><span class="score-val">2</span> Group Winner</div>
+    <div class="score-item"><span class="score-val">1</span> Group Runner-up</div>
+    <div class="score-item"><span class="score-val">8</span> WC Winner</div>
+    <div class="score-item"><span class="score-val">4</span> WC Runner-up</div>
+    <div class="score-item"><span class="score-val">2</span> WC 3rd Place</div>
+  </div>
+  <div id="scorecardsContainer"></div>
+</div>
+
+<!-- ALLOCATION -->
+<div id="panel-allocation" class="panel">
+  <p class="section-label">Team Draw — Odds Tier Allocation</p>
+  <div class="status-banner setup" style="margin-bottom:18px">
+    Teams ranked by Sportsbet (Tenobet AU) decimal odds, split into 5 tiers of 9. Each participant randomly assigned 1 team per tier. 3 worst-odds teams excluded.
+  </div>
+  <div class="allocation-grid" id="allocationGrid"></div>
+  <p class="section-label" style="margin-top:20px">Excluded Teams (3 Worst Odds)</p>
+  <div id="excludedTeams"></div>
+</div>
+
+<!-- SETUP -->
+<div id="panel-setup" class="panel">
+  <div class="setup-card">
+    <h2>⚙️ Connect Your Google Sheet</h2>
+
+    <div class="setup-steps">
+
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Make a copy of the Score Sheet template</strong>
+          <p>Open the link below and click <em>File → Make a copy</em>. This gives you your own editable sheet with all 45 teams pre-filled.</p>
+          <p style="margin-top:6px"><a href="https://docs.google.com/spreadsheets/d/1BVNfkQz2oJHW2xFqNq5bm8pGplhPEScjJNqTAhbMPk4/copy" target="_blank">👉 Click here to copy the template →</a></p>
+          <p style="margin-top:4px; font-size:11px; color:rgba(249,245,232,0.4)">The sheet has columns: Team | GS1 | GS2 | GS3 | Rd32 | Rd16 | QF | SF | 3rd | Final | Bonus</p>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Publish the sheet as CSV</strong>
+          <p>In your copy: <em>File → Share → Publish to web</em><br>
+          Set <strong>Sheet1</strong> and <strong>Comma-separated values (.csv)</strong>, click <em>Publish</em>.<br>
+          Copy the URL it gives you — it looks like:</p>
+          <div class="code-snippet">https://docs.google.com/spreadsheets/d/SHEET_ID/pub?gid=0&single=true&output=csv</div>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Paste your published CSV URL here</strong>
+          <div class="url-input-wrap">
+            <input type="url" class="url-input" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/…/pub?…&output=csv">
+            <button class="connect-btn" onclick="connectSheet()">Connect</button>
+          </div>
+          <p style="margin-top:6px">The URL is saved in your browser. Anyone using this dashboard on the same device stays connected automatically.</p>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Update scores from your iPhone</strong>
+          <p>Open the Google Sheet on your phone via the Google Sheets app or Safari. Edit any score cell and save. Hit <strong>↻ Refresh</strong> on the dashboard and scores pull through instantly. No coding required.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="setupStatus" style="margin-top:16px"></div>
+  </div>
+
+  <div class="setup-card" style="margin-top:0">
+    <h2>🌐 Share with Mates (GitHub Pages)</h2>
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Create a free GitHub account</strong>
+          <p><a href="https://github.com/signup" target="_blank">github.com/signup</a> — takes 2 minutes.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Create a new repository and upload this file</strong>
+          <p>New repo → name it <code>wc2026-sweep</code> → upload <code>worldcup_sweep_v2.html</code> → rename it to <code>index.html</code>.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Enable GitHub Pages</strong>
+          <p>Settings → Pages → Source: <em>main branch</em> → Save.<br>
+          Your URL: <code>yourusername.github.io/wc2026-sweep</code> — share this with the group.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-step-content">
+          <strong>Each mate connects the same Sheet URL</strong>
+          <p>When they first open the link, they tap ⚙️ Setup and paste your published CSV URL. It saves to their browser. After that, hitting ↻ Refresh always pulls the latest scores you've entered.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// TEAM & ALLOCATION DATA
+// ============================================================
+const ALL_TEAMS = [
+  { name:"Spain",        odds:5.5,    group:"H", tier:1 },
+  { name:"France",       odds:6.0,    group:"I", tier:1 },
+  { name:"England",      odds:7.0,    group:"L", tier:1 },
+  { name:"Brazil",       odds:9.0,    group:"C", tier:1 },
+  { name:"Argentina",    odds:9.0,    group:"J", tier:1 },
+  { name:"Portugal",     odds:11.0,   group:"K", tier:1 },
+  { name:"Germany",      odds:15.0,   group:"E", tier:1 },
+  { name:"Netherlands",  odds:21.0,   group:"F", tier:1 },
+  { name:"Norway",       odds:26.0,   group:"I", tier:1 },
+  { name:"Belgium",      odds:34.0,   group:"G", tier:2 },
+  { name:"Colombia",     odds:34.0,   group:"K", tier:2 },
+  { name:"Morocco",      odds:51.0,   group:"C", tier:2 },
+  { name:"Japan",        odds:51.0,   group:"F", tier:2 },
+  { name:"Uruguay",      odds:67.0,   group:"H", tier:2 },
+  { name:"USA",          odds:67.0,   group:"D", tier:2 },
+  { name:"Croatia",      odds:81.0,   group:"L", tier:2 },
+  { name:"Mexico",       odds:81.0,   group:"A", tier:2 },
+  { name:"Switzerland",  odds:81.0,   group:"B", tier:2 },
+  { name:"Turkey",       odds:100.0,  group:"D", tier:3 },
+  { name:"Ecuador",      odds:101.0,  group:"E", tier:3 },
+  { name:"Senegal",      odds:151.0,  group:"I", tier:3 },
+  { name:"South Korea",  odds:151.0,  group:"A", tier:3 },
+  { name:"Austria",      odds:151.0,  group:"J", tier:3 },
+  { name:"Algeria",      odds:151.0,  group:"J", tier:3 },
+  { name:"Egypt",        odds:201.0,  group:"G", tier:3 },
+  { name:"Sweden",       odds:201.0,  group:"F", tier:3 },
+  { name:"Iran",         odds:201.0,  group:"G", tier:3 },
+  { name:"Ivory Coast",  odds:251.0,  group:"E", tier:4 },
+  { name:"Canada",       odds:251.0,  group:"B", tier:4 },
+  { name:"Scotland",     odds:301.0,  group:"C", tier:4 },
+  { name:"DR Congo",     odds:301.0,  group:"K", tier:4 },
+  { name:"Saudi Arabia", odds:301.0,  group:"H", tier:4 },
+  { name:"Paraguay",     odds:301.0,  group:"D", tier:4 },
+  { name:"Ghana",        odds:351.0,  group:"L", tier:4 },
+  { name:"New Zealand",  odds:351.0,  group:"G", tier:4 },
+  { name:"Australia",    odds:501.0,  group:"D", tier:4 },
+  { name:"Tunisia",      odds:501.0,  group:"F", tier:5 },
+  { name:"Uzbekistan",   odds:501.0,  group:"K", tier:5 },
+  { name:"Cape Verde",   odds:501.0,  group:"H", tier:5 },
+  { name:"Jordan",       odds:501.0,  group:"J", tier:5 },
+  { name:"Iraq",         odds:501.0,  group:"I", tier:5 },
+  { name:"Panama",       odds:501.0,  group:"L", tier:5 },
+  { name:"Czechia",      odds:501.0,  group:"A", tier:5 },
+  { name:"South Africa", odds:501.0,  group:"A", tier:5 },
+  { name:"Bosnia",       odds:501.0,  group:"B", tier:5 },
+  // Excluded
+  { name:"Qatar",        odds:1001.0, group:"B", tier:6 },
+  { name:"Haiti",        odds:1001.0, group:"C", tier:6 },
+  { name:"Curacao",      odds:1001.0, group:"E", tier:6 },
+];
+
+const PARTICIPANTS = ["Steven","Silvana","Jake","David","Theo","Eren","Nick","Jason","Shan"];
+
+const ROUNDS = [
+  { key:"GS1",   label:"GS 1",  type:"group" },
+  { key:"GS2",   label:"GS 2",  type:"group" },
+  { key:"GS3",   label:"GS 3",  type:"group" },
+  { key:"Rd32",  label:"Rd 32", type:"ko"    },
+  { key:"Rd16",  label:"Rd 16", type:"ko"    },
+  { key:"QF",    label:"QF",    type:"ko"    },
+  { key:"SF",    label:"SF",    type:"ko"    },
+  { key:"3rd",   label:"3rd",   type:"ko"    },
+  { key:"Final", label:"Final", type:"ko"    },
+  { key:"Bonus", label:"Bonus", type:"bonus" },
+];
+
+// ============================================================
+// ALLOCATION — seeded random, reproducible
+// ============================================================
+function seededRand(seed) {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+}
+function buildAllocation() {
+  const rand = seededRand(20262026);
+  const alloc = {};
+  PARTICIPANTS.forEach(p => { alloc[p] = []; });
+  for (let tier = 1; tier <= 5; tier++) {
+    const teams = ALL_TEAMS.filter(t => t.tier === tier);
+    const shuffled = [...teams];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    PARTICIPANTS.forEach((p, i) => alloc[p].push(shuffled[i]));
+  }
+  return alloc;
+}
+const ALLOCATION = buildAllocation();
+
+// ============================================================
+// GOOGLE SHEETS CSV FETCH
+// ============================================================
+const LS_URL_KEY  = 'wc26_sheet_url';
+const LS_CACHE_KEY = 'wc26_score_cache';
+const LS_TS_KEY   = 'wc26_fetch_ts';
+
+function getSheetUrl() { return localStorage.getItem(LS_URL_KEY) || ''; }
+function saveSheetUrl(url) { localStorage.setItem(LS_URL_KEY, url); }
+
+// scores: { "Spain": { GS1:3, GS2:0, Bonus:2, ... }, ... }
+let SCORES = {};
+
+async function fetchSheetScores(showFeedback) {
+  const url = getSheetUrl();
+  if (!url) {
+    if (showFeedback) showStatus('lb-status', 'setup', '⚙️ No Google Sheet connected yet. Go to the <strong>Setup</strong> tab to connect your sheet.');
+    loadCachedScores();
+    return false;
+  }
+
+  if (showFeedback) {
+    const btn = document.getElementById('refreshBtn');
+    if (btn) btn.classList.add('spinning');
+    showStatus('lb-status', 'loading', '<span class="spinner"></span> Fetching latest scores…');
+  }
+
+  try {
+    // Use a CORS proxy for the CSV fetch (Google Sheets pub CSV requires no auth)
+    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+    const res = await fetch(proxyUrl, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    parseCSV(text);
+    localStorage.setItem(LS_CACHE_KEY, text);
+    localStorage.setItem(LS_TS_KEY, new Date().toLocaleString('en-AU', {timeZone:'Australia/Melbourne'}));
+    updateLastUpdated();
+    if (showFeedback) showStatus('lb-status', 'success', '✅ Scores updated successfully.');
+    setTimeout(() => clearStatus('lb-status'), 3000);
+    return true;
+  } catch(e) {
+    console.warn('Fetch failed:', e);
+    loadCachedScores();
+    if (showFeedback) showStatus('lb-status', 'error', `⚠️ Couldn't reach Google Sheets (${e.message}). Showing cached scores. Check your internet connection or re-paste the URL in Setup.`);
+    return false;
+  } finally {
+    const btn = document.getElementById('refreshBtn');
+    if (btn) btn.classList.remove('spinning');
+  }
+}
+
+function loadCachedScores() {
+  const cached = localStorage.getItem(LS_CACHE_KEY);
+  if (cached) parseCSV(cached);
+}
+
+function parseCSV(text) {
+  SCORES = {};
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return;
+  // Header row: Team, GS1, GS2, GS3, Rd32, Rd16, QF, SF, 3rd, Final, Bonus
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,''));
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim().replace(/"/g,''));
+    const teamName = cols[0];
+    if (!teamName) continue;
+    SCORES[teamName] = {};
+    headers.forEach((h, idx) => {
+      if (idx === 0) return;
+      SCORES[teamName][h] = parseInt(cols[idx]) || 0;
+    });
+  }
+  renderAll();
+}
+
+function getScore(team, round) {
+  return (SCORES[team] && SCORES[team][round]) ? SCORES[team][round] : 0;
+}
+function teamTotal(team) {
+  return ROUNDS.reduce((s, r) => s + getScore(team, r.key), 0);
+}
+function personTotal(person) {
+  return ALLOCATION[person].reduce((s, t) => s + teamTotal(t.name), 0);
+}
+
+// ============================================================
+// RENDER ALL
+// ============================================================
+function renderAll() {
+  renderLeaderboard();
+  if (document.getElementById('panel-scorecards').classList.contains('active')) renderScorecards();
+}
+
+function renderLeaderboard() {
+  const standings = PARTICIPANTS.map(p => ({ name: p, total: personTotal(p) }))
+    .sort((a, b) => b.total - a.total);
+
+  const grid = document.getElementById('leaderboardGrid');
+  const medals = ['🥇','🥈','🥉'];
+  grid.innerHTML = standings.map((p, i) => {
+    const rank = i + 1;
+    const teams = ALLOCATION[p.name];
+    const chips = teams.map(t =>
+      `<span class="team-chip"><span class="tier-badge tier-${t.tier}"></span>${t.name}</span>`
+    ).join('');
+    const breakdown = ROUNDS.map(r => {
+      const pts = teams.reduce((s,t) => s + getScore(t.name, r.key), 0);
+      return pts > 0 ? `${r.label}:${pts}` : null;
+    }).filter(Boolean).join(' · ');
+
+    return `<div class="lb-card ${rank<=3?'rank-'+rank:''}">
+      <div class="rank-bg">${rank}</div>
+      <div class="lb-name">${medals[i]||''} ${p.name}</div>
+      <div class="lb-pts">${p.total}<span>pts</span></div>
+      <div class="lb-teams">${chips}</div>
+      ${breakdown ? `<div class="lb-breakdown">${breakdown}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderScorecards() {
+  const container = document.getElementById('scorecardsContainer');
+  container.innerHTML = PARTICIPANTS.map(person => {
+    const teams = ALLOCATION[person];
+    const pTotal = personTotal(person);
+    const hdrs = ROUNDS.map(r => {
+      const cls = r.type==='group'?'group-col':r.type==='ko'?'ko-col':r.type==='bonus'?'bonus-col':'';
+      return `<th class="${cls}">${r.label}</th>`;
+    }).join('');
+
+    const rows = teams.map(team => {
+      const cells = ROUNDS.map(r => {
+        const pts = getScore(team.name, r.key);
+        return `<td class="pts-cell ${pts>0?'has-pts':'zero'}">${pts>0?pts:'–'}</td>`;
+      }).join('');
+      const tt = teamTotal(team.name);
+      return `<tr>
+        <td class="team-col"><span class="tier-badge tier-${team.tier}"></span>${team.name} <small style="color:rgba(249,245,232,0.3)">${team.group}</small></td>
+        ${cells}
+        <td class="pts-cell" style="color:#c97ae8;font-weight:700">${tt||'–'}</td>
+      </tr>`;
+    }).join('');
+
+    const totalCells = ROUNDS.map(r => {
+      const pts = teams.reduce((s,t) => s + getScore(t.name,r.key), 0);
+      return `<td class="pts-cell">${pts>0?pts:'–'}</td>`;
+    }).join('');
+
+    return `<div class="participant-section">
+      <div class="participant-header">
+        <h2>${person}</h2>
+        <span class="participant-total-pts">${pTotal} pts</span>
+      </div>
+      <div class="table-wrap">
+        <table class="scorecard">
+          <thead><tr><th class="team-col">Team</th>${hdrs}<th class="total-col">Total</th></tr></thead>
+          <tbody>
+            ${rows}
+            <tr class="total-row">
+              <td class="team-col">Round Total</td>${totalCells}
+              <td>${pTotal}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAllocation() {
+  const tierLabels = ['','Tier 1 — Favourites','Tier 2 — Contenders','Tier 3 — Dark Horses','Tier 4 — Longshots','Tier 5 — Outsiders'];
+  const tierClass  = ['','t1','t2','t3','t4','t5'];
+  const grid = document.getElementById('allocationGrid');
+  grid.innerHTML = '';
+  for (let tier = 1; tier <= 5; tier++) {
+    const teams = ALL_TEAMS.filter(t => t.tier === tier);
+    const items = teams.map(team => {
+      const owner = PARTICIPANTS.find(p => ALLOCATION[p].some(t => t.name === team.name));
+      return `<div class="tier-team-item">
+        <span class="team-name">${team.name}</span>
+        <span class="meta">
+          <span class="assignee">${owner||'?'}</span>
+          <span class="odds-tag">${team.odds}x</span>
+        </span>
+      </div>`;
+    }).join('');
+    grid.innerHTML += `<div class="tier-col ${tierClass[tier]}"><h3>${tierLabels[tier]}</h3>${items}</div>`;
+  }
+  document.getElementById('excludedTeams').innerHTML = ALL_TEAMS.filter(t=>t.tier===6).map(t =>
+    `<span class="team-chip" style="text-decoration:line-through;opacity:0.45;margin-right:8px">${t.name} (Grp ${t.group})</span>`
+  ).join('');
+}
+
+// ============================================================
+// SETUP — connect sheet
+// ============================================================
+function connectSheet() {
+  const input = document.getElementById('sheetUrlInput');
+  const url = input.value.trim();
+  if (!url.includes('docs.google.com') || !url.includes('output=csv')) {
+    showStatus('setupStatus','error','⚠️ That doesn\'t look like a published CSV URL. Make sure it ends with <code>output=csv</code>.');
+    return;
+  }
+  saveSheetUrl(url);
+  showStatus('setupStatus','success','✅ Sheet URL saved! Fetching scores now…');
+  fetchAndRender(true);
+}
+
+function loadSavedUrl() {
+  const url = getSheetUrl();
+  if (url) {
+    const inp = document.getElementById('sheetUrlInput');
+    if (inp) inp.value = url;
+  }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function showStatus(id, type, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="status-banner ${type}">${html}</div>`;
+}
+function clearStatus(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '';
+}
+function updateLastUpdated() {
+  const ts = localStorage.getItem(LS_TS_KEY);
+  document.getElementById('lastUpdated').innerHTML = ts
+    ? `Last updated:<br><strong>${ts}</strong>`
+    : 'Not yet fetched';
+}
+
+function showTab(btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const tab = btn.dataset.tab;
+  document.getElementById('panel-' + tab).classList.add('active');
+  btn.classList.add('active');
+  if (tab === 'scorecards') renderScorecards();
+  if (tab === 'setup') loadSavedUrl();
+}
+
+async function fetchAndRender(showFeedback) {
+  await fetchSheetScores(showFeedback);
+  renderLeaderboard();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+renderAllocation();
+updateLastUpdated();
+fetchAndRender(false); // silent load on open
+</script>
+</body>
+</html>
