@@ -584,7 +584,7 @@ const ALL_TEAMS = [
   // Tier 1
   { name:"Spain", flag:"🇪🇸",             odds:5.5,    group:"H", tier:1, person:"Nick"   },
   { name:"France", flag:"🇫🇷",            odds:6.0,    group:"I", tier:1, person:"David"  },
-  { name:"England", flag:"🏴",           odds:8.0,    group:"L", tier:1, person:"Theo"   },
+  { name:"England", flag:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",           odds:8.0,    group:"L", tier:1, person:"Theo"   },
   { name:"Portugal", flag:"🇵🇹",          odds:9.0,    group:"K", tier:1, person:"Shan"   },
   { name:"Argentina", flag:"🇦🇷",         odds:10.0,   group:"J", tier:1, person:"Eren"   },
   { name:"Brazil", flag:"🇧🇷",            odds:10.0,   group:"C", tier:1, person:"Steven" },
@@ -610,7 +610,7 @@ const ALL_TEAMS = [
   { name:"Cote d Ivoire", flag:"🇨🇮",     odds:201.0,  group:"E", tier:3, person:"Liz"    },
   { name:"Paraguay", flag:"🇵🇾",          odds:251.0,  group:"D", tier:3, person:"Silv"   },
   { name:"Canada", flag:"🇨🇦",            odds:251.0,  group:"B", tier:3, person:"Shan"   },
-  { name:"Scotland", flag:"🏴",          odds:251.0,  group:"C", tier:3, person:"Theo"   },
+  { name:"Scotland", flag:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",          odds:251.0,  group:"C", tier:3, person:"Theo"   },
   { name:"Bosnia", flag:"🇧🇦",            odds:301.0,  group:"B", tier:3, person:"Jake"   },
   { name:"Czechia", flag:"🇨🇿",           odds:301.0,  group:"A", tier:3, person:"Gel"    },
   { name:"Egypt", flag:"🇪🇬",             odds:301.0,  group:"G", tier:3, person:"Eren"   },
@@ -906,7 +906,7 @@ function groupGamesPlayed(teamName) {
 function buildGroupStandings() {
   // group -> [{team, pts}]
   const groups = {};
-  ALL_TEAMS.filter(t => t.tier <= 4).forEach(t => {
+  ALL_TEAMS.filter(t => t.tier <= 5).forEach(t => {
     if (!groups[t.group]) groups[t.group] = [];
     const s = SCORES[t.name] || {};
     const pts = (s.GS1||0) + (s.GS2||0) + (s.GS3||0);
