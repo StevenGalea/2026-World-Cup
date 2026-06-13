@@ -1,5 +1,4 @@
 {
-  "lastUpdated": "12/06/2026 7:39pm",
   "scores": {
     "Spain":         { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
     "France":        { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
@@ -44,6 +43,10 @@
     "Qatar":         { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
     "Saudi Arabia":  { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
     "South Africa":  { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
-    "Uzbekistan":    { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 }
+    "Uzbekistan":    { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
+    "Cabo Verde":    { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
+    "Jordan":        { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
+    "Curacao":       { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 },
+    "Haiti":         { "GS1":0, "GS2":0, "GS3":0, "Rd32":0, "Rd16":0, "QF":0, "SF":0, "3rd":0, "Final":0, "Bonus":0 }
   }
 }
