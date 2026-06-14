@@ -380,7 +380,21 @@
     gap: 10px; font-size: 13px;
   }
   .fixture-team { display: flex; align-items: center; gap: 6px; }
+  .fixture-teams-wrap { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .fixture-persons {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 10px; color: rgba(249,245,232,0.35);
+  }
+  .fixture-person-label {
+    font-family: 'Oswald', sans-serif; letter-spacing: 0.5px; text-transform: uppercase;
+    color: var(--gold); opacity: 0.7;
+  }
+  .fixture-vs-tiny { color: rgba(249,245,232,0.25); font-size: 9px; }
   .fixture-vs { color: rgba(249,245,232,0.3); font-size: 11px; }
+  .fixture-score {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 14px;
+    color: var(--gold); min-width: 40px; text-align: center;
+  }
   .fixture-group {
     background: rgba(245,200,66,0.12); color: var(--gold);
     font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600;
@@ -529,9 +543,13 @@
   <p class="section-label">Upcoming Matches (Next 3 Days)</p>
   <div id="upcomingFixtures" style="margin-bottom:28px"></div>
 
+  <p class="section-label">Results <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(most recent first)</span></p>
+  <div id="resultsFixtures" style="margin-bottom:28px"></div>
+
   <p class="section-label">Full Fixture List <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(Melbourne time)</span></p>
   <div id="allFixtures"></div>
 </div>
+
 
 <!-- SETUP -->
 <div id="panel-setup" class="panel">
@@ -640,6 +658,148 @@ const TEAM_LOOKUP = {};
 ALL_TEAMS.forEach(t => { TEAM_LOOKUP[t.name] = t; });
 function getFlag(name) { return TEAM_LOOKUP[name]?.flag || '🏳️'; }
 
+// ============================================================
+// LIVE FIXTURES — sourced from openfootball/worldcup.json
+// Free, CC0, no API key. Updated by maintainers as results land.
+// ============================================================
+const OPENFOOTBALL_URL = 'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json';
+
+// Map openfootball team names -> names used in this dashboard
+const TEAM_NAME_MAP_OF = {
+  "Czech Republic": "Czechia",
+  "Bosnia & Herzegovina": "Bosnia",
+  "Curaçao": "Curacao",
+  "Ivory Coast": "Cote d Ivoire",
+  "Turkey": "Turkiye",
+  "South Korea": "Korea",
+  "DR Congo": "Congo DR",
+  "Cape Verde": "Cabo Verde",
+};
+function mapTeamName(name) { return TEAM_NAME_MAP_OF[name] || name; }
+
+const ROUND_ABBR = {
+  "Round of 32": "R32",
+  "Round of 16": "R16",
+  "Quarter-final": "QF",
+  "Semi-final": "SF",
+  "Match for third place": "3rd",
+  "Final": "Final",
+};
+
+let FIXTURES = [];
+
+// Convert "HH:MM UTC±N" + date to Melbourne time (AEST, fixed UTC+10
+// during June/July — no DST adjustment needed on either side).
+function convertToMelbourne(dateStr, timeStr) {
+  const m = timeStr.match(/(\d{1,2}):(\d{2})\s*UTC([+-]\d+)/);
+  if (!m) return { date: dateStr, time: timeStr };
+  const hh = parseInt(m[1]), mm = parseInt(m[2]), offset = parseInt(m[3]);
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  // local = UTC + offset  =>  UTC = local - offset
+  const utc = new Date(Date.UTC(y, mo-1, d, hh - offset, mm));
+  // Melbourne = UTC + 10
+  const mel = new Date(utc.getTime() + 10*60*60*1000);
+  const newDate = mel.toISOString().slice(0,10);
+  let hours = mel.getUTCHours();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  let displayHour = hours % 12; if (displayHour === 0) displayHour = 12;
+  const minutes = mel.getUTCMinutes().toString().padStart(2,'0');
+  return { date: newDate, time: `${displayHour}:${minutes}${ampm}` };
+}
+
+async function fetchOpenFootballFixtures() {
+  try {
+    const res = await fetch(OPENFOOTBALL_URL + '?t=' + Math.floor(Date.now()/3600000), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    FIXTURES = (data.matches || []).map(m => {
+      const conv = convertToMelbourne(m.date, m.time);
+      return {
+        round: m.round,
+        num: m.num || null,
+        date: conv.date,
+        time: conv.time,
+        group: m.group ? m.group.replace('Group ', '') : null,
+        teamA: mapTeamName(m.team1),
+        teamB: mapTeamName(m.team2),
+        venue: m.ground,
+        scoreA: m.score ? m.score.ft[0] : null,
+        scoreB: m.score ? m.score.ft[1] : null,
+      };
+    });
+  } catch(e) {
+    console.warn('Fixture fetch failed:', e.message);
+    FIXTURES = [];
+  }
+}
+
+// ── Resolve knockout placeholder codes (1A, 2B, 3A/B/C/D/F, W74, L101) ──
+function buildLiveGroupStandings() {
+  const groups = {};
+  FIXTURES.forEach(f => {
+    if (!f.group) return;
+    if (!groups[f.group]) groups[f.group] = {};
+    [f.teamA, f.teamB].forEach(t => {
+      if (!groups[f.group][t]) groups[f.group][t] = { team:t, pts:0, gf:0, ga:0 };
+    });
+    if (f.scoreA === null) return;
+    const a = groups[f.group][f.teamA], b = groups[f.group][f.teamB];
+    a.gf += f.scoreA; a.ga += f.scoreB;
+    b.gf += f.scoreB; b.ga += f.scoreA;
+    if (f.scoreA > f.scoreB) a.pts += 3;
+    else if (f.scoreA < f.scoreB) b.pts += 3;
+    else { a.pts += 1; b.pts += 1; }
+  });
+  const result = {};
+  Object.keys(groups).forEach(g => {
+    result[g] = Object.values(groups[g]).sort((x,y) => (y.pts-x.pts) || ((y.gf-y.ga)-(x.gf-x.ga)));
+  });
+  return result;
+}
+
+function resolveTeamCode(code) {
+  if (!code) return { name: '?', flag: '🏳️', resolved:false };
+  if (TEAM_LOOKUP[code]) return { name: code, flag: getFlag(code), resolved:true };
+  let m;
+  if ((m = code.match(/^([12])([A-L])$/))) {
+    const standings = buildLiveGroupStandings();
+    const team = standings[m[2]]?.[parseInt(m[1])-1]?.team;
+    return team ? { name: team, flag: getFlag(team), resolved:true } : { name: code, flag:'🏳️', resolved:false };
+  }
+  if ((m = code.match(/^3([A-L\/]+)$/))) {
+    const standings = buildLiveGroupStandings();
+    const candidates = m[1].split('/').map(g => standings[g]?.[2]).filter(Boolean);
+    if (candidates.length) {
+      candidates.sort((a,b) => (b.pts-a.pts) || ((b.gf-b.ga)-(a.gf-a.ga)));
+      return { name: candidates[0].team, flag: getFlag(candidates[0].team), resolved:true };
+    }
+    return { name: code, flag:'🏳️', resolved:false };
+  }
+  if ((m = code.match(/^W(\d+)$/))) {
+    const match = FIXTURES.find(f => f.num === parseInt(m[1]));
+    if (match && match.scoreA !== null) {
+      const winner = match.scoreA > match.scoreB ? match.teamA : match.teamB;
+      return { name: winner, flag: getFlag(winner), resolved:true };
+    }
+    return { name: code, flag:'🏳️', resolved:false };
+  }
+  if ((m = code.match(/^L(\d+)$/))) {
+    const match = FIXTURES.find(f => f.num === parseInt(m[1]));
+    if (match && match.scoreA !== null) {
+      const loser = match.scoreA > match.scoreB ? match.teamB : match.teamA;
+      return { name: loser, flag: getFlag(loser), resolved:true };
+    }
+    return { name: code, flag:'🏳️', resolved:false };
+  }
+  return { name: code, flag:'🏳️', resolved:false };
+}
+
+function fixtureBadge(f) {
+  if (f.group) return f.group;
+  return ROUND_ABBR[f.round] || f.round || '';
+}
+
+
 const ROUNDS = [
   { key:"GS1",   label:"GS 1",  type:"group" },
   { key:"GS2",   label:"GS 2",  type:"group" },
@@ -653,73 +813,7 @@ const ROUNDS = [
   { key:"Bonus", label:"Bonus", type:"bonus" },
 ];
 
-// ============================================================
-// FIXTURES — Official schedule, Melbourne (AEST) times as shown
-// ============================================================
-const FIXTURES = [
-  { date:"2026-06-12", time:"5:00am",  group:"A", teamA:"Mexico",       teamB:"South Africa", venue:"Mexico City" },
-  { date:"2026-06-12", time:"12:00pm", group:"A", teamA:"South Korea",   teamB:"Czechia",       venue:"Guadalajara" },
-  { date:"2026-06-13", time:"5:00am",  group:"B", teamA:"Canada",       teamB:"Bosnia",        venue:"Toronto" },
-  { date:"2026-06-13", time:"11:00am", group:"D", teamA:"USA",          teamB:"Paraguay",       venue:"Los Angeles" },
-  { date:"2026-06-14", time:"5:00am",  group:"B", teamA:"Qatar",        teamB:"Switzerland",    venue:"San Francisco" },
-  { date:"2026-06-14", time:"8:00am",  group:"C", teamA:"Brazil",       teamB:"Morocco",        venue:"New York/NJ" },
-  { date:"2026-06-14", time:"11:00am", group:"C", teamA:"Haiti",        teamB:"Scotland",       venue:"Boston" },
-  { date:"2026-06-14", time:"2:00pm",  group:"D", teamA:"Australia",    teamB:"Turkiye",        venue:"Vancouver" },
-  { date:"2026-06-16", time:"2:00am",  group:"H", teamA:"Spain",        teamB:"Cabo Verde",     venue:"Atlanta" },
-  { date:"2026-06-16", time:"5:00am",  group:"H", teamA:"Belgium",      teamB:"Egypt",          venue:"Seattle" },
-  { date:"2026-06-16", time:"8:00am",  group:"H", teamA:"Saudi Arabia", teamB:"Uruguay",        venue:"Miami" },
-  { date:"2026-06-16", time:"11:00am", group:"H", teamA:"Iran",         teamB:"New Zealand",    venue:"Los Angeles" },
-  { date:"2026-06-17", time:"5:00am",  group:"I", teamA:"France",       teamB:"Senegal",        venue:"New York/NJ" },
-  { date:"2026-06-17", time:"8:00am",  group:"I", teamA:"Iraq",         teamB:"Norway",         venue:"Boston" },
-  { date:"2026-06-17", time:"11:00am", group:"I", teamA:"Argentina",    teamB:"Algeria",        venue:"Kansas City" },
-  { date:"2026-06-17", time:"2:00pm",  group:"J", teamA:"Austria",      teamB:"Jordan",         venue:"San Francisco" },
-  { date:"2026-06-18", time:"3:00am",  group:"K", teamA:"Portugal",     teamB:"Congo DR",       venue:"Houston" },
-  { date:"2026-06-18", time:"6:00am",  group:"L", teamA:"England",      teamB:"Croatia",        venue:"Dallas" },
-  { date:"2026-06-18", time:"9:00am",  group:"L", teamA:"Ghana",        teamB:"Panama",         venue:"Toronto" },
-  { date:"2026-06-18", time:"12:00pm", group:"K", teamA:"Uzbekistan",   teamB:"Colombia",       venue:"Mexico City" },
-  { date:"2026-06-19", time:"2:00am",  group:"E", teamA:"Czechia",      teamB:"South Africa",   venue:"Atlanta" },
-  { date:"2026-06-19", time:"5:00am",  group:"B", teamA:"Switzerland",  teamB:"Bosnia",         venue:"Los Angeles" },
-  { date:"2026-06-19", time:"8:00am",  group:"B", teamA:"Canada",       teamB:"Qatar",          venue:"Vancouver" },
-  { date:"2026-06-19", time:"11:00am", group:"A", teamA:"Mexico",       teamB:"South Korea",    venue:"Guadalajara" },
-  { date:"2026-06-20", time:"5:00am",  group:"D", teamA:"USA",          teamB:"Australia",      venue:"Seattle" },
-  { date:"2026-06-20", time:"8:00am",  group:"C", teamA:"Scotland",     teamB:"Morocco",        venue:"Boston" },
-  { date:"2026-06-20", time:"10:30am", group:"C", teamA:"Brazil",       teamB:"Haiti",          venue:"Philadelphia" },
-  { date:"2026-06-20", time:"1:00pm",  group:"D", teamA:"Turkiye",      teamB:"Paraguay",       venue:"San Francisco" },
-  { date:"2026-06-21", time:"3:00am",  group:"F", teamA:"Netherlands",  teamB:"Sweden",         venue:"Houston" },
-  { date:"2026-06-21", time:"6:00am",  group:"E", teamA:"Germany",      teamB:"Cote d Ivoire",  venue:"Toronto" },
-  { date:"2026-06-21", time:"10:00am", group:"E", teamA:"Ecuador",      teamB:"Curacao",        venue:"Kansas City" },
-  { date:"2026-06-21", time:"2:00pm",  group:"F", teamA:"Tunisia",      teamB:"Japan",          venue:"Monterrey" },
-  { date:"2026-06-22", time:"2:00am",  group:"H", teamA:"Spain",        teamB:"Saudi Arabia",   venue:"Atlanta" },
-  { date:"2026-06-22", time:"5:00am",  group:"H", teamA:"Belgium",      teamB:"Iran",           venue:"Los Angeles" },
-  { date:"2026-06-22", time:"8:00am",  group:"H", teamA:"Uruguay",      teamB:"Cabo Verde",     venue:"Miami" },
-  { date:"2026-06-22", time:"11:00am", group:"G", teamA:"New Zealand",  teamB:"Egypt",          venue:"Vancouver" },
-  { date:"2026-06-23", time:"3:00am",  group:"J", teamA:"Argentina",    teamB:"Austria",        venue:"Dallas" },
-  { date:"2026-06-23", time:"7:00am",  group:"I", teamA:"France",       teamB:"Iraq",           venue:"Philadelphia" },
-  { date:"2026-06-23", time:"10:00am", group:"I", teamA:"Norway",       teamB:"Senegal",        venue:"New York/NJ" },
-  { date:"2026-06-23", time:"1:00pm",  group:"J", teamA:"Jordan",       teamB:"Algeria",        venue:"San Francisco" },
-  { date:"2026-06-24", time:"3:00am",  group:"K", teamA:"Portugal",     teamB:"Uzbekistan",     venue:"Houston" },
-  { date:"2026-06-24", time:"6:00am",  group:"L", teamA:"England",      teamB:"Ghana",          venue:"Boston" },
-  { date:"2026-06-24", time:"9:00am",  group:"L", teamA:"Panama",       teamB:"Croatia",        venue:"Toronto" },
-  { date:"2026-06-24", time:"12:00pm", group:"K", teamA:"Colombia",     teamB:"Congo DR",       venue:"Guadalajara" },
-  { date:"2026-06-25", time:"5:00am",  group:"B", teamA:"Switzerland",  teamB:"Canada",         venue:"Vancouver" },
-  { date:"2026-06-25", time:"5:00am", group:"H", teamA:"Bosnia",       teamB:"Qatar",          venue:"Seattle" },
-  { date:"2026-06-25", time:"8:00am",  group:"C", teamA:"Scotland",     teamB:"Brazil",         venue:"Miami" },
-  { date:"2026-06-25", time:"8:00am",  group:"C", teamA:"Morocco",      teamB:"Haiti",          venue:"Atlanta" },
-  { date:"2026-06-25", time:"11:00am", group:"A", teamA:"Czechia",      teamB:"Mexico",         venue:"Mexico City" },
-  { date:"2026-06-25", time:"11:00am", group:"A", teamA:"South Africa", teamB:"South Korea",    venue:"Monterrey" },
-  { date:"2026-06-26", time:"6:00am",  group:"E", teamA:"Curacao",      teamB:"Cote d Ivoire",  venue:"Philadelphia" },
-  { date:"2026-06-26", time:"6:00am",  group:"E", teamA:"Ecuador",      teamB:"Germany",        venue:"New York/NJ" },
-  { date:"2026-06-26", time:"9:00am",  group:"F", teamA:"Japan",        teamB:"Sweden",         venue:"Dallas" },
-  { date:"2026-06-26", time:"9:00am",  group:"F", teamA:"Tunisia",      teamB:"Netherlands",    venue:"Kansas City" },
-  { date:"2026-06-26", time:"12:00pm", group:"D", teamA:"Turkiye",      teamB:"USA",            venue:"Los Angeles" },
-  { date:"2026-06-26", time:"12:00pm", group:"D", teamA:"Paraguay",     teamB:"Australia",      venue:"San Francisco" },
-  { date:"2026-06-28", time:"7:00am",  group:"L", teamA:"Panama",       teamB:"England",        venue:"New York/NJ" },
-  { date:"2026-06-28", time:"7:00am",  group:"L", teamA:"Croatia",      teamB:"Ghana",          venue:"Philadelphia" },
-  { date:"2026-06-28", time:"9:30am",  group:"K", teamA:"Colombia",     teamB:"Portugal",       venue:"Miami" },
-  { date:"2026-06-28", time:"9:30am",  group:"K", teamA:"Congo DR",     teamB:"Uzbekistan",     venue:"Atlanta" },
-  { date:"2026-06-28", time:"12:00pm", group:"J", teamA:"Jordan",       teamB:"Argentina",      venue:"Dallas" },
-  { date:"2026-06-28", time:"12:00pm", group:"J", teamA:"Algeria",      teamB:"Austria",        venue:"Kansas City" },
-];
+
 
 
 // ============================================================
@@ -751,6 +845,13 @@ async function fetchAndRender(showFeedback) {
   if (showFeedback) {
     if (btn) btn.classList.add('spinning');
     showStatus('lb-status','loading','<span class="spinner"></span> Loading latest scores…');
+    fetchOpenFootballFixtures().then(() => {
+      if (document.getElementById('panel-fixtures').classList.contains('active')) {
+        renderUpcomingFixtures();
+        renderResults();
+        renderAllFixtures();
+      }
+    });
   }
   try {
     const res = await fetch('scores.json?t=' + Date.now(), { cache: 'no-store' });
@@ -809,11 +910,11 @@ function parseFixtureDateTime(f) {
 }
 
 function fixtureStatus(f) {
+  if (f.scoreA !== null && f.scoreA !== undefined) return 'completed';
   const now = new Date();
   const start = parseFixtureDateTime(f);
   const end = new Date(start.getTime() + 2*60*60*1000); // assume 2hr match window
   if (now >= start && now <= end) return 'live';
-  if (now > end) return 'completed';
   return 'upcoming';
 }
 
@@ -823,17 +924,38 @@ function formatFixtureDate(dateStr) {
   return date.toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' });
 }
 
+function personForTeam(name) {
+  const t = TEAM_LOOKUP[name];
+  return t && t.person ? t.person : null;
+}
+
 function fixtureCardHtml(f) {
   const status = fixtureStatus(f);
   const eliminatedA = isEliminated(f.teamA);
   const eliminatedB = isEliminated(f.teamB);
+  const isCompleted = status === 'completed';
+  const timeOrFT = isCompleted
+    ? '<span style="color:rgba(249,245,232,0.35);font-size:10px">FT</span>'
+    : f.time;
+  const scoreHtml = isCompleted
+    ? `<span class="fixture-score">${f.scoreA} - ${f.scoreB}</span>`
+    : '<span class="fixture-vs">vs</span>';
+  const personA = personForTeam(f.teamA);
+  const personB = personForTeam(f.teamB);
+  const groupOrRound = f.group || (ROUND_ABBR[f.round] || f.round || '');
+  const personLine = (personA || personB)
+    ? `<div class="fixture-persons"><span class="fixture-person-label">${personA || '—'}</span><span class="fixture-vs-tiny">vs</span><span class="fixture-person-label">${personB || '—'}</span></div>`
+    : '';
   return `<div class="fixture-card ${status}">
-    <div class="fixture-time">${f.time}</div>
-    <div class="fixture-teams">
-      <span class="fixture-team ${eliminatedA?'fixture-flag-eliminated':''}">${getFlag(f.teamA)} ${f.teamA}</span>
-      <span class="fixture-group">${f.group}</span>
-      <span class="fixture-vs">vs</span>
-      <span class="fixture-team ${eliminatedB?'fixture-flag-eliminated':''}">${getFlag(f.teamB)} ${f.teamB}</span>
+    <div class="fixture-time">${timeOrFT}</div>
+    <div class="fixture-teams-wrap">
+      <div class="fixture-teams">
+        <span class="fixture-team ${eliminatedA?'fixture-flag-eliminated':''}">${getFlag(f.teamA)} ${f.teamA}</span>
+        <span class="fixture-group">${groupOrRound}</span>
+        ${scoreHtml}
+        <span class="fixture-team ${eliminatedB?'fixture-flag-eliminated':''}">${getFlag(f.teamB)} ${f.teamB}</span>
+      </div>
+      ${personLine}
     </div>
     <div class="fixture-venue">${f.venue}${status==='live'?' · <span style=\"color:#e84040\">● LIVE</span>':''}</div>
   </div>`;
@@ -856,6 +978,29 @@ function renderUpcomingFixtures() {
   let html = '';
   let lastDate = null;
   upcoming.forEach(f => {
+    if (f.date !== lastDate) {
+      html += `<div class="fixture-day-label">${formatFixtureDate(f.date)}</div>`;
+      lastDate = f.date;
+    }
+    html += fixtureCardHtml(f);
+  });
+  container.innerHTML = html;
+}
+
+function renderResults() {
+  const completed = FIXTURES.filter(f => f.scoreA !== null && f.scoreA !== undefined)
+    .sort((a,b) => parseFixtureDateTime(b) - parseFixtureDateTime(a)); // most recent first
+
+  const container = document.getElementById('resultsFixtures');
+  if (!container) return;
+  if (completed.length === 0) {
+    container.innerHTML = '<div class="empty-state">No results yet.</div>';
+    return;
+  }
+
+  let html = '';
+  let lastDate = null;
+  completed.forEach(f => {
     if (f.date !== lastDate) {
       html += `<div class="fixture-day-label">${formatFixtureDate(f.date)}</div>`;
       lastDate = f.date;
@@ -1000,6 +1145,7 @@ function renderAll() {
   if (document.getElementById('panel-scorecards').classList.contains('active')) renderScorecards();
   if (document.getElementById('panel-fixtures').classList.contains('active')) {
     renderUpcomingFixtures();
+    renderResults();
     renderAllFixtures();
   }
 }
@@ -1164,7 +1310,7 @@ function showTab(btn) {
   document.getElementById('panel-'+tab).classList.add('active');
   btn.classList.add('active');
   if (tab==='scorecards') renderScorecards();
-  if (tab==='fixtures') { renderUpcomingFixtures(); renderAllFixtures(); }
+  if (tab==='fixtures') { renderUpcomingFixtures(); renderResults(); renderAllFixtures(); }
   if (tab==='leaderboard') renderGroupStandings();
 
 }
@@ -1190,6 +1336,13 @@ syncNavStickyOffset();
 renderGroupStandings();
 
 fetchAndRender(false);
+fetchOpenFootballFixtures().then(() => {
+  if (document.getElementById('panel-fixtures').classList.contains('active')) {
+    renderUpcomingFixtures();
+    renderResults();
+    renderAllFixtures();
+  }
+});
 
 </script>
 </body>
