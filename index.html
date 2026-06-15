@@ -489,7 +489,7 @@
   <button class="tab-btn" data-tab="allocation" onclick="showTab(this)">🎲 Team Draw</button>
   <button class="tab-btn" data-tab="odds" onclick="showTab(this)">📈 Odds</button>
   <button class="tab-btn" data-tab="fixtures" onclick="showTab(this)">📅 Fixtures</button>
-  <button class="tab-btn" data-tab="setup" onclick="showTab(this)">⚙️ Setup</button>
+  <button class="tab-btn" data-tab="setup" onclick="showTab(this)">ℹ️ Info</button>
 </nav>
 
 <!-- LEADERBOARD -->
@@ -551,43 +551,86 @@
 </div>
 
 
-<!-- SETUP -->
+<!-- INFO -->
 <div id="panel-setup" class="panel">
   <div class="setup-card">
-    <h2>⚙️ How Scores Update</h2>
+    <h2>🏆 How The Sweep Works</h2>
     <div class="setup-steps">
       <div class="setup-step">
         <div>
-          <strong>Open scores.json on GitHub</strong>
-          <p>Go to <strong>github.com/StevenGalea/2026-World-Cup</strong> and tap <strong>scores.json</strong>. Works fine in mobile Safari/Chrome.</p>
+          <strong>The Draw</strong>
+          <p>All 48 World Cup teams were ranked by TAB outright odds and split into 4 tiers of 11 (the 4 longest-odds teams — Cabo Verde, Jordan, Curaçao, Haiti — were excluded from the draw). Each of the 11 participants was randomly allocated one team from each tier, giving everyone 4 teams of mixed strength. See the <strong>🎲 Team Draw</strong> and <strong>📈 Odds</strong> tabs for the full breakdown.</p>
         </div>
       </div>
       <div class="setup-step">
         <div>
-          <strong>Tap the pencil ✏️ to edit</strong>
-          <p>Find the team that played and update their points (e.g. a win in GS1 = change <code>"GS1":0</code> to <code>"GS1":3</code>). Also update <code>"lastUpdated"</code> at the top with today's date.</p>
+          <strong>Match Points</strong>
+          <p>Every group-stage and knockout match your teams play earns points:</p>
+          <div class="scoring-key" style="margin-top:8px">
+            <div class="score-item"><span class="score-val">3</span> Win</div>
+            <div class="score-item"><span class="score-val">1</span> Draw</div>
+            <div class="score-item"><span class="score-val">0</span> Loss</div>
+          </div>
         </div>
       </div>
       <div class="setup-step">
         <div>
-          <strong>Commit changes</strong>
-          <p>Scroll down → tap <strong>Commit changes</strong>. GitHub Pages rebuilds in ~20-30 seconds.</p>
+          <strong>Bonus Points</strong>
+          <p>Extra points are awarded for tournament milestones:</p>
+          <div class="scoring-key" style="margin-top:8px">
+            <div class="score-item"><span class="score-val">2</span> Group Winner</div>
+            <div class="score-item"><span class="score-val">1</span> Group Runner-up</div>
+            <div class="score-item"><span class="score-val">8</span> WC Winner</div>
+            <div class="score-item"><span class="score-val">4</span> WC Runner-up</div>
+            <div class="score-item"><span class="score-val">2</span> WC 3rd Place</div>
+          </div>
         </div>
       </div>
       <div class="setup-step">
         <div>
-          <strong>Everyone refreshes</strong>
-          <p>Hit <strong>↻ Refresh</strong> on the dashboard. No accounts, no Google Sheets, nothing to connect.</p>
+          <strong>Prize Pool</strong>
+          <p>$20 buy-in × 11 participants = $220 total. 🥇 1st place: $140 · 🥈 2nd place: $60 · 🥉 3rd place: $20.</p>
         </div>
       </div>
     </div>
   </div>
+
+  <div class="setup-card">
+    <h2>📡 How Data Flows</h2>
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div>
+          <strong>Live results, zero manual entry</strong>
+          <p>Every time this page loads — or you tap <strong>↻ Refresh</strong> — the dashboard fetches the full match schedule and results directly from <strong>openfootball/worldcup.json</strong>, a free, publicly maintained dataset. As results come in, scores update automatically.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div>
+          <strong>Points calculated automatically</strong>
+          <p>For each team, the dashboard works out their 1st, 2nd and 3rd group matches in chronological order and assigns 3/1/0 points based on the result. Once all 6 matches in a group are finished, group winner/runner-up bonuses are awarded automatically (ties broken by points → goal difference → goals scored, per standard FIFA rules). Knockout wins, the Final, and the 3rd-place match are scored the same way the moment results land.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div>
+          <strong>Knockout placeholders</strong>
+          <p>Before the group stage finishes, knockout fixtures show placeholder codes (e.g. <code>1A</code> = Group A winner, <code>W74</code> = winner of Match 74). These automatically resolve to real team names and flags as soon as the relevant results are in.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div>
+          <strong>Times &amp; "Last Updated"</strong>
+          <p>All match times are shown in Melbourne (AEST). The <strong>Last updated</strong> timestamp in the header reflects when this site's code was last deployed — match results themselves refresh live every time the page loads, independent of that timestamp.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="setup-card">
     <h2>🌐 Share the Dashboard</h2>
     <p style="font-size:12px;color:rgba(249,245,232,0.55);line-height:1.7">
       Share this link with all participants:<br>
       <a href="https://stevengalea.github.io/2026-World-Cup" target="_blank" style="color:var(--gold)">stevengalea.github.io/2026-World-Cup</a><br><br>
-      Each person opens the link, goes to ⚙️ Setup, pastes the Google Sheets CSV URL, and hits Connect. Scores save to their browser — they only need to do this once.
+      No accounts, no setup, nothing to connect — just open the link and hit <strong>↻ Refresh</strong> anytime for the latest standings.
     </p>
   </div>
 </div>
@@ -725,6 +768,8 @@ async function fetchOpenFootballFixtures() {
         venue: m.ground,
         scoreA: m.score ? m.score.ft[0] : null,
         scoreB: m.score ? m.score.ft[1] : null,
+        pensA: (m.score && m.score.pens) ? m.score.pens[0] : null,
+        pensB: (m.score && m.score.pens) ? m.score.pens[1] : null,
       };
     });
   } catch(e) {
@@ -799,6 +844,101 @@ function fixtureBadge(f) {
   return ROUND_ABBR[f.round] || f.round || '';
 }
 
+// ============================================================
+// AUTO-SCORING — compute sweep points (3/1/0 + bonus) entirely
+// from live fixture results. No manual entry required.
+// ============================================================
+const KO_ROUND_KEY = {
+  "Round of 32": "Rd32",
+  "Round of 16": "Rd16",
+  "Quarter-final": "QF",
+  "Semi-final": "SF",
+  "Match for third place": "3rd",
+  "Final": "Final",
+};
+
+function isGroupComplete(groupLetter) {
+  const matches = FIXTURES.filter(f => f.group === groupLetter);
+  return matches.length > 0 && matches.every(f => f.scoreA !== null && f.scoreA !== undefined);
+}
+
+function computeScoresFromFixtures() {
+  const computed = {};
+  ALL_TEAMS.forEach(t => {
+    computed[t.name] = { GS1:0, GS2:0, GS3:0, Rd32:0, Rd16:0, QF:0, SF:0, '3rd':0, Final:0, Bonus:0 };
+  });
+
+  // ── GROUP STAGE: 3/1/0 per team, based on chronological order of
+  // that team's 3 group matches (GS1 = first played, GS2 = second, etc.) ──
+  ALL_TEAMS.forEach(team => {
+    if (!team.group) return;
+    const matches = FIXTURES
+      .filter(f => f.group === team.group && (f.teamA===team.name || f.teamB===team.name))
+      .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
+    matches.slice(0,3).forEach((f, idx) => {
+      if (f.scoreA === null || f.scoreA === undefined) return;
+      const isA = f.teamA === team.name;
+      const my  = isA ? f.scoreA : f.scoreB;
+      const opp = isA ? f.scoreB : f.scoreA;
+      const key = ['GS1','GS2','GS3'][idx];
+      computed[team.name][key] = my>opp ? 3 : (my===opp ? 1 : 0);
+    });
+  });
+
+  // ── GROUP BONUS: winner +2, runner-up +1 — once all 6 matches in
+  // the group are complete. Tiebreak: points → goal diff → goals for. ──
+  const groupLetters = [...new Set(ALL_TEAMS.filter(t=>t.group).map(t=>t.group))];
+  groupLetters.forEach(g => {
+    if (!isGroupComplete(g)) return;
+    const teams = ALL_TEAMS.filter(t => t.group === g);
+    const standings = teams.map(t => {
+      let gf=0, ga=0;
+      FIXTURES.filter(f=>f.group===g && (f.teamA===t.name||f.teamB===t.name)).forEach(f=>{
+        if (f.scoreA===null||f.scoreA===undefined) return;
+        const isA = f.teamA===t.name;
+        gf += isA?f.scoreA:f.scoreB;
+        ga += isA?f.scoreB:f.scoreA;
+      });
+      const pts = computed[t.name].GS1 + computed[t.name].GS2 + computed[t.name].GS3;
+      return { name:t.name, pts, gd: gf-ga, gf };
+    }).sort((a,b)=> b.pts-a.pts || b.gd-a.gd || b.gf-a.gf);
+    computed[standings[0].name].Bonus += 2;
+    computed[standings[1].name].Bonus += 1;
+  });
+
+  // ── KNOCKOUT ROUNDS: winner = 3, loser = 0. Final + 3rd place also
+  // award tournament bonuses (Winner +8, Runner-up +4, 3rd +2). ──
+  FIXTURES.forEach(f => {
+    const key = KO_ROUND_KEY[f.round];
+    if (!key) return;
+    if (f.scoreA === null || f.scoreA === undefined) return;
+    const ra = resolveTeamCode(f.teamA);
+    const rb = resolveTeamCode(f.teamB);
+    if (!ra.resolved || !rb.resolved) return;
+    if (computed[ra.name] === undefined || computed[rb.name] === undefined) return;
+
+    let winner=null, loser=null;
+    if (f.scoreA > f.scoreB) { winner=ra.name; loser=rb.name; }
+    else if (f.scoreB > f.scoreA) { winner=rb.name; loser=ra.name; }
+    else if (f.pensA != null && f.pensB != null) {
+      if (f.pensA > f.pensB) { winner=ra.name; loser=rb.name; }
+      else { winner=rb.name; loser=ra.name; }
+    } else { return; } // unresolved draw — skip until pens recorded
+
+    computed[winner][key] = 3;
+    computed[loser][key] = 0;
+
+    if (key === 'Final') {
+      computed[winner].Bonus += 8;
+      computed[loser].Bonus += 4;
+    } else if (key === '3rd') {
+      computed[winner].Bonus += 2;
+    }
+  });
+
+  return computed;
+}
+
 
 const ROUNDS = [
   { key:"GS1",   label:"GS 1",  type:"group" },
@@ -844,24 +984,20 @@ async function fetchAndRender(showFeedback) {
   const btn = document.getElementById('refreshBtn');
   if (showFeedback) {
     if (btn) btn.classList.add('spinning');
-    showStatus('lb-status','loading','<span class="spinner"></span> Loading latest scores…');
-    fetchOpenFootballFixtures().then(() => {
-      if (document.getElementById('panel-fixtures').classList.contains('active')) {
-        renderUpcomingFixtures();
-        renderResults();
-        renderAllFixtures();
-      }
-    });
+    showStatus('lb-status','loading','<span class="spinner"></span> Fetching live results…');
   }
   try {
-    const res = await fetch('scores.json?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    SCORES = data.scores || {};
+    await fetchOpenFootballFixtures();
+    SCORES = computeScoresFromFixtures();
     renderAll();
-    if (showFeedback) { showStatus('lb-status','success','✅ Scores updated.'); setTimeout(()=>clearStatus('lb-status'),2500); }
+    if (document.getElementById('panel-fixtures').classList.contains('active')) {
+      renderUpcomingFixtures();
+      renderResults();
+      renderAllFixtures();
+    }
+    if (showFeedback) { showStatus('lb-status','success','✅ Live scores updated.'); setTimeout(()=>clearStatus('lb-status'),2500); }
   } catch(e) {
-    if (showFeedback) showStatus('lb-status','error','⚠️ Could not load scores.json. Try Refresh again.');
+    if (showFeedback) showStatus('lb-status','error','⚠️ Could not load live results. Try Refresh again.');
     renderAll();
   } finally {
     if (btn) btn.classList.remove('spinning');
@@ -910,11 +1046,12 @@ function parseFixtureDateTime(f) {
 }
 
 function fixtureStatus(f) {
-  if (f.scoreA !== null && f.scoreA !== undefined) return 'completed';
+  const hasScore = f.scoreA !== null && f.scoreA !== undefined;
   const now = new Date();
   const start = parseFixtureDateTime(f);
   const end = new Date(start.getTime() + 2*60*60*1000); // assume 2hr match window
   if (now >= start && now <= end) return 'live';
+  if (hasScore) return 'completed';
   return 'upcoming';
 }
 
@@ -931,13 +1068,18 @@ function personForTeam(name) {
 
 function fixtureCardHtml(f) {
   const status = fixtureStatus(f);
+  const hasScore = f.scoreA !== null && f.scoreA !== undefined;
   const eliminatedA = isEliminated(f.teamA);
   const eliminatedB = isEliminated(f.teamB);
-  const isCompleted = status === 'completed';
-  const timeOrFT = isCompleted
-    ? '<span style="color:rgba(249,245,232,0.35);font-size:10px">FT</span>'
-    : f.time;
-  const scoreHtml = isCompleted
+  let timeLabel;
+  if (status === 'live') {
+    timeLabel = '<span style="color:#e84040;font-weight:700;font-size:10px">● LIVE</span>';
+  } else if (status === 'completed') {
+    timeLabel = '<span style="color:rgba(249,245,232,0.35);font-size:10px">FT</span>';
+  } else {
+    timeLabel = f.time;
+  }
+  const scoreHtml = hasScore
     ? `<span class="fixture-score">${f.scoreA} - ${f.scoreB}</span>`
     : '<span class="fixture-vs">vs</span>';
   const personA = personForTeam(f.teamA);
@@ -947,7 +1089,7 @@ function fixtureCardHtml(f) {
     ? `<div class="fixture-persons"><span class="fixture-person-label">${personA || '—'}</span><span class="fixture-vs-tiny">vs</span><span class="fixture-person-label">${personB || '—'}</span></div>`
     : '';
   return `<div class="fixture-card ${status}">
-    <div class="fixture-time">${timeOrFT}</div>
+    <div class="fixture-time">${timeLabel}</div>
     <div class="fixture-teams-wrap">
       <div class="fixture-teams">
         <span class="fixture-team ${eliminatedA?'fixture-flag-eliminated':''}">${getFlag(f.teamA)} ${f.teamA}</span>
@@ -957,7 +1099,7 @@ function fixtureCardHtml(f) {
       </div>
       ${personLine}
     </div>
-    <div class="fixture-venue">${f.venue}${status==='live'?' · <span style=\"color:#e84040\">● LIVE</span>':''}</div>
+    <div class="fixture-venue">${f.venue}</div>
   </div>`;
 }
 
@@ -1336,13 +1478,6 @@ syncNavStickyOffset();
 renderGroupStandings();
 
 fetchAndRender(false);
-fetchOpenFootballFixtures().then(() => {
-  if (document.getElementById('panel-fixtures').classList.contains('active')) {
-    renderUpcomingFixtures();
-    renderResults();
-    renderAllFixtures();
-  }
-});
 
 </script>
 </body>
