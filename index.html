@@ -354,6 +354,23 @@
 
   /* FIXTURES */
   .fixture-day-group { margin-bottom: 20px; }
+  .fixture-filter-bar {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px;
+  }
+  .fixture-filter-bar select {
+    background: var(--pitch); color: var(--cream); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px; padding: 8px 12px; font-size: 12px; font-family: 'Inter', sans-serif;
+    cursor: pointer;
+  }
+  .fixture-filter-bar select:focus { outline: none; border-color: var(--gold); }
+  .fixture-filter-bar button {
+    background: rgba(232,64,64,0.12); border: 1px solid rgba(232,64,64,0.3); color: #e84040;
+    border-radius: 4px; padding: 8px 14px; font-size: 11px; cursor: pointer;
+    font-family: 'Oswald', sans-serif; letter-spacing: 0.8px; text-transform: uppercase;
+  }
+  .fixture-filter-bar button:hover { background: rgba(232,64,64,0.2); }
+  td.team-clickable { cursor: pointer; transition: background 0.15s; }
+  td.team-clickable:hover { background: rgba(245,200,66,0.1) !important; }
   .fixture-day-label {
     font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 600;
     color: var(--gold); text-transform: uppercase; letter-spacing: 1px;
@@ -486,9 +503,9 @@
 <nav class="nav-tabs">
   <button class="tab-btn active" data-tab="leaderboard" onclick="showTab(this)">🏆 Leaderboard</button>
   <button class="tab-btn" data-tab="scorecards" onclick="showTab(this)">📊 Scorecards</button>
+  <button class="tab-btn" data-tab="fixtures" onclick="showTab(this)">📅 Fixtures</button>
   <button class="tab-btn" data-tab="allocation" onclick="showTab(this)">🎲 Team Draw</button>
   <button class="tab-btn" data-tab="odds" onclick="showTab(this)">📈 Odds</button>
-  <button class="tab-btn" data-tab="fixtures" onclick="showTab(this)">📅 Fixtures</button>
   <button class="tab-btn" data-tab="setup" onclick="showTab(this)">ℹ️ Info</button>
 </nav>
 
@@ -540,14 +557,35 @@
 
 <!-- FIXTURES -->
 <div id="panel-fixtures" class="panel">
-  <p class="section-label">Upcoming Matches (Next 3 Days)</p>
-  <div id="upcomingFixtures" style="margin-bottom:28px"></div>
+  <div class="fixture-filter-bar">
+    <select id="filterTeamSelect" onchange="onFilterTeamChange(this.value)">
+      <option value="">⚽ Filter by Team…</option>
+    </select>
+    <select id="filterPersonSelect" onchange="onFilterPersonChange(this.value)">
+      <option value="">👤 Filter by Person…</option>
+    </select>
+    <button id="clearFilterBtn" onclick="clearFixtureFilter()" style="display:none">✕ Clear Filter</button>
+  </div>
 
-  <p class="section-label">Results <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(most recent first)</span></p>
-  <div id="resultsFixtures" style="margin-bottom:28px"></div>
+  <div id="filteredSection" style="display:none">
+    <p class="section-label" id="filteredSectionLabel">Filtered Matches</p>
+    <div id="filteredFixtures" style="margin-bottom:28px"></div>
+  </div>
 
-  <p class="section-label">Full Fixture List <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(Melbourne time)</span></p>
-  <div id="allFixtures"></div>
+  <div id="upcomingSection">
+    <p class="section-label">Upcoming Matches (Next 3 Days)</p>
+    <div id="upcomingFixtures" style="margin-bottom:28px"></div>
+  </div>
+
+  <div id="resultsSection">
+    <p class="section-label">Results <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(most recent first)</span></p>
+    <div id="resultsFixtures" style="margin-bottom:28px"></div>
+  </div>
+
+  <div id="allSection">
+    <p class="section-label">Full Fixture List <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(Melbourne time)</span></p>
+    <div id="allFixtures"></div>
+  </div>
 </div>
 
 
@@ -991,9 +1029,7 @@ async function fetchAndRender(showFeedback) {
     SCORES = computeScoresFromFixtures();
     renderAll();
     if (document.getElementById('panel-fixtures').classList.contains('active')) {
-      renderUpcomingFixtures();
-      renderResults();
-      renderAllFixtures();
+      renderFixturesTab();
     }
     if (showFeedback) { showStatus('lb-status','success','✅ Live scores updated.'); setTimeout(()=>clearStatus('lb-status'),2500); }
   } catch(e) {
@@ -1172,6 +1208,130 @@ function renderAllFixtures() {
 }
 
 // ============================================================
+// FIXTURE FILTERS — by team or by person
+// ============================================================
+let fixtureFilter = null; // { type: 'team'|'person', value: string }
+
+function fixtureMatchesFilter(f) {
+  if (!fixtureFilter) return true;
+  const ra = resolveTeamCode(f.teamA);
+  const rb = resolveTeamCode(f.teamB);
+  const nameA = ra.resolved ? ra.name : f.teamA;
+  const nameB = rb.resolved ? rb.name : f.teamB;
+  if (fixtureFilter.type === 'team') {
+    return nameA === fixtureFilter.value || nameB === fixtureFilter.value;
+  }
+  if (fixtureFilter.type === 'person') {
+    const pA = personForTeam(nameA);
+    const pB = personForTeam(nameB);
+    return pA === fixtureFilter.value || pB === fixtureFilter.value;
+  }
+  return true;
+}
+
+function renderFilteredFixtures() {
+  const container = document.getElementById('filteredFixtures');
+  const label = document.getElementById('filteredSectionLabel');
+  if (!fixtureFilter || !container || !label) return;
+
+  if (fixtureFilter.type === 'team') {
+    label.innerHTML = `All Matches — ${getFlag(fixtureFilter.value)} ${fixtureFilter.value}`;
+  } else {
+    label.innerHTML = `All Matches — ${fixtureFilter.value}'s Teams`;
+  }
+
+  const matches = FIXTURES.filter(fixtureMatchesFilter)
+    .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
+
+  if (matches.length === 0) {
+    container.innerHTML = '<div class="empty-state">No matches found.</div>';
+    return;
+  }
+
+  let html = '';
+  let lastDate = null;
+  matches.forEach(f => {
+    if (f.date !== lastDate) {
+      html += `<div class="fixture-day-label">${formatFixtureDate(f.date)}</div>`;
+      lastDate = f.date;
+    }
+    html += fixtureCardHtml(f);
+  });
+  container.innerHTML = html;
+}
+
+function renderFixturesTab() {
+  const active = !!fixtureFilter;
+  document.getElementById('filteredSection').style.display = active ? '' : 'none';
+  document.getElementById('upcomingSection').style.display = active ? 'none' : '';
+  document.getElementById('resultsSection').style.display  = active ? 'none' : '';
+  document.getElementById('allSection').style.display       = active ? 'none' : '';
+
+  if (active) {
+    renderFilteredFixtures();
+  } else {
+    renderUpcomingFixtures();
+    renderResults();
+    renderAllFixtures();
+  }
+}
+
+function onFilterTeamChange(val) {
+  if (!val) { clearFixtureFilter(); return; }
+  const ps = document.getElementById('filterPersonSelect'); if (ps) ps.value = '';
+  fixtureFilter = { type:'team', value: val };
+  document.getElementById('clearFilterBtn').style.display = '';
+  renderFixturesTab();
+}
+
+function onFilterPersonChange(val) {
+  if (!val) { clearFixtureFilter(); return; }
+  const ts = document.getElementById('filterTeamSelect'); if (ts) ts.value = '';
+  fixtureFilter = { type:'person', value: val };
+  document.getElementById('clearFilterBtn').style.display = '';
+  renderFixturesTab();
+}
+
+function clearFixtureFilter() {
+  fixtureFilter = null;
+  const ts = document.getElementById('filterTeamSelect'); if (ts) ts.value = '';
+  const ps = document.getElementById('filterPersonSelect'); if (ps) ps.value = '';
+  document.getElementById('clearFilterBtn').style.display = 'none';
+  renderFixturesTab();
+}
+
+function populateFixtureFilters() {
+  const teamSelect = document.getElementById('filterTeamSelect');
+  const personSelect = document.getElementById('filterPersonSelect');
+  if (!teamSelect || !personSelect) return;
+  [...ALL_TEAMS].sort((a,b)=>a.name.localeCompare(b.name)).forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.name;
+    opt.textContent = `${t.flag} ${t.name}`;
+    teamSelect.appendChild(opt);
+  });
+  PARTICIPANTS.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    personSelect.appendChild(opt);
+  });
+}
+
+// Navigate to Fixtures tab pre-filtered by a team (called from scorecards)
+function filterFixturesByTeamAndNavigate(teamName) {
+  fixtureFilter = { type:'team', value: teamName };
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-fixtures').classList.add('active');
+  document.querySelector('[data-tab="fixtures"]').classList.add('active');
+  const ts = document.getElementById('filterTeamSelect'); if (ts) ts.value = teamName;
+  const ps = document.getElementById('filterPersonSelect'); if (ps) ps.value = '';
+  document.getElementById('clearFilterBtn').style.display = '';
+  renderFixturesTab();
+}
+
+// ============================================================
 // ELIMINATION TRACKER
 // A team is "eliminated" if:
 //  - All 3 group games played (GS1,GS2,GS3 all > 0 entries exist
@@ -1190,17 +1350,24 @@ function groupGamesPlayed(teamName) {
   return s;
 }
 
-function buildGroupStandings() {
-  // group -> [{team, pts}]
+function buildGroupStandingsDetailed() {
+  // group -> [{team, flag, w, d, l, gf, ga, gd, pts}]
   const groups = {};
-  ALL_TEAMS.filter(t => t.tier <= 5).forEach(t => {
+  ALL_TEAMS.filter(t => t.group).forEach(t => {
     if (!groups[t.group]) groups[t.group] = [];
-    const s = SCORES[t.name] || {};
-    const pts = (s.GS1||0) + (s.GS2||0) + (s.GS3||0);
-    groups[t.group].push({ team: t.name, pts, flag: t.flag });
+    let w=0, d=0, l=0, gf=0, ga=0;
+    FIXTURES.filter(f => f.group === t.group && (f.teamA===t.name || f.teamB===t.name)).forEach(f => {
+      if (f.scoreA === null || f.scoreA === undefined) return;
+      const isA = f.teamA === t.name;
+      const my  = isA ? f.scoreA : f.scoreB;
+      const opp = isA ? f.scoreB : f.scoreA;
+      gf += my; ga += opp;
+      if (my > opp) w++; else if (my === opp) d++; else l++;
+    });
+    groups[t.group].push({ team: t.name, flag: t.flag, w, d, l, gf, ga, gd: gf-ga, pts: w*3+d });
   });
   Object.keys(groups).forEach(g => {
-    groups[g].sort((a,b) => b.pts - a.pts);
+    groups[g].sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
   });
   return groups;
 }
@@ -1208,41 +1375,33 @@ function buildGroupStandings() {
 function isEliminated(teamName) {
   const team = TEAM_LOOKUP[teamName];
   if (!team || team.tier > 4) return false;
-  const standings = buildGroupStandings();
-  const group = standings[team.group];
-  if (!group) return false;
-  // Only flag elimination once all teams in group have a recorded GS3 score > 0
-  // i.e. group stage appears complete (heuristic: every team's GS1+GS2+GS3 sum's
-  // components are all individually set — we check if total games are "decided"
-  // by requiring at least one non-zero total across the whole group, AND this
-  // specific team sits in bottom half AND has played all 3).
-  const allHaveResults = group.every(g => {
-    const s = SCORES[g.team] || {};
-    return (s.GS1||0)+(s.GS2||0)+(s.GS3||0) > 0 || (s.GS1===0 && s.GS2===0 && s.GS3===0);
-  });
-  // Simpler practical rule: if group stage totals exist and this team ranks 3rd/4th
-  const rank = group.findIndex(g => g.team === teamName);
-  const groupComplete = group.some(g => (SCORES[g.team]?.GS1||0)+(SCORES[g.team]?.GS2||0)+(SCORES[g.team]?.GS3||0) >= 7); // someone has near-max pts suggests games played
-  return groupComplete && rank >= 2;
+  if (!isGroupComplete(team.group)) return false;
+  const standings = buildGroupStandingsDetailed()[team.group];
+  if (!standings) return false;
+  const rank = standings.findIndex(g => g.team === teamName);
+  return rank >= 2;
 }
 
 // ============================================================
 // GROUP STANDINGS RENDER
 // ============================================================
 function renderGroupStandings() {
-  const standings = buildGroupStandings();
+  const standings = buildGroupStandingsDetailed();
   const container = document.getElementById('groupStandingsGrid');
   if (!container) return;
   const groupLetters = Object.keys(standings).sort();
   container.innerHTML = groupLetters.map(g => {
     const rows = standings[g].map((t,i) => `<tr class="${i<2?'qualifying':''}">
       <td>${t.flag} ${t.team}</td>
+      <td>${t.w}</td>
+      <td>${t.d}</td>
+      <td>${t.l}</td>
       <td>${t.pts}</td>
     </tr>`).join('');
     return `<div class="group-standing-card">
       <h4>Group ${g}</h4>
       <table class="group-table">
-        <thead><tr><th>Team</th><th>Pts</th></tr></thead>
+        <thead><tr><th>Team</th><th>W</th><th>D</th><th>L</th><th>Pts</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -1286,9 +1445,7 @@ function renderAll() {
   renderGroupStandings();
   if (document.getElementById('panel-scorecards').classList.contains('active')) renderScorecards();
   if (document.getElementById('panel-fixtures').classList.contains('active')) {
-    renderUpcomingFixtures();
-    renderResults();
-    renderAllFixtures();
+    renderFixturesTab();
   }
 }
 
@@ -1341,7 +1498,7 @@ function renderScorecards() {
         return `<td class="pts-cell ${pts>0?'has-pts':'zero'}">${pts>0?pts:'–'}</td>`;
       }).join('');
       return `<tr>
-        <td><span class="tier-badge tier-${team.tier}"></span>${getFlag(team.name)} ${team.name} <small style="color:rgba(249,245,232,0.28)">${team.group}</small></td>
+        <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${team.name}')"><span class="tier-badge tier-${team.tier}"></span>${getFlag(team.name)} ${team.name} <small style="color:rgba(249,245,232,0.28)">${team.group}</small></td>
         ${cells}
         <td class="pts-cell" style="color:#c97ae8">${teamTotal(team.name)||'–'}</td>
       </tr>`;
@@ -1452,7 +1609,7 @@ function showTab(btn) {
   document.getElementById('panel-'+tab).classList.add('active');
   btn.classList.add('active');
   if (tab==='scorecards') renderScorecards();
-  if (tab==='fixtures') { renderUpcomingFixtures(); renderResults(); renderAllFixtures(); }
+  if (tab==='fixtures') { renderFixturesTab(); }
   if (tab==='leaderboard') renderGroupStandings();
 
 }
@@ -1462,7 +1619,6 @@ function showTab(btn) {
 // ============================================================
 renderAllocation();
 renderOddsTable();
-updateLastUpdated();
 // Dynamically position sticky nav directly below the header,
 // regardless of header height on different screen sizes.
 function syncNavStickyOffset() {
@@ -1476,6 +1632,7 @@ window.addEventListener('resize', syncNavStickyOffset);
 window.addEventListener('load', syncNavStickyOffset);
 syncNavStickyOffset();
 renderGroupStandings();
+populateFixtureFilters();
 
 fetchAndRender(false);
 
