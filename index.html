@@ -695,9 +695,77 @@
     text-align: center; padding: 36px;
     color: rgba(249,245,232,0.3); font-size: 13px;
   }
+
+  /* ── BACK TO TOP ── */
+  #backToTopBtn {
+    position: fixed;
+    bottom: 22px;
+    right: 18px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(13, 31, 21, 0.55);
+    border: 1px solid rgba(245,200,66,0.35);
+    color: var(--gold);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease;
+    backdrop-filter: blur(4px);
+    z-index: 150;
+  }
+  #backToTopBtn.visible {
+    opacity: 0.55;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  #backToTopBtn:hover {
+    opacity: 1;
+    background: rgba(13, 31, 21, 0.85);
+  }
+  #backToTopBtn:active {
+    transform: translateY(0) scale(0.93);
+  }
+  @media (max-width: 768px) {
+    #backToTopBtn { bottom: 18px; right: 14px; width: 38px; height: 38px; font-size: 16px; }
+  }
+
+  /* ── DAILY RECAP (hidden tab, accessed via #recap) ── */
+  .recap-toolbar {
+    display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .recap-date-select {
+    background: var(--pitch); color: var(--cream);
+    border: 1px solid rgba(245,200,66,0.3); border-radius: 4px;
+    padding: 9px 12px; font-size: 13px; font-family: 'Inter', sans-serif; cursor: pointer;
+  }
+  .recap-copy-btn {
+    background: var(--gold); color: #0d1f15;
+    border: none; border-radius: 4px; padding: 9px 18px;
+    font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px;
+    letter-spacing: 0.5px; cursor: pointer; transition: opacity 0.15s;
+  }
+  .recap-copy-btn:hover { opacity: 0.85; }
+  .recap-copy-btn.copied { background: #3ecf6a; }
+  .recap-output {
+    background: var(--pitch); border: 1px solid rgba(245,200,66,0.15);
+    border-radius: 8px; padding: 18px 20px;
+    font-family: 'Inter', monospace, monospace;
+    font-size: 12.5px; line-height: 1.7; white-space: pre-wrap;
+    color: rgba(249,245,232,0.88); max-height: 70vh; overflow-y: auto;
+  }
+  .recap-empty {
+    text-align: center; padding: 36px; color: rgba(249,245,232,0.3); font-size: 13px;
+  }
 </style>
 </head>
 <body>
+<button id="backToTopBtn" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
 
 <header>
   <div class="header-left">
@@ -962,6 +1030,18 @@
     </select>
   </div>
   <div id="h2hContainer"><div class="h2h-placeholder">Select two players above to compare their sweeps.</div></div>
+</div>
+
+<!-- DAILY WRITEUP (hidden — access via #daily-writeup) -->
+<div id="panel-writeup" class="panel">
+  <p class="section-label">📰 Daily Group Chat Writeup</p>
+  <p class="impact-intro">Generates a copy-paste-ready recap of today's results, leaderboard movement, and tomorrow's fixtures. Not linked in the main nav — bookmark <code>#daily-writeup</code> to come back here directly.</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="tab-btn active" style="cursor:pointer" onclick="generateDailyWriteup()">🔄 Regenerate</button>
+    <button class="tab-btn active" style="cursor:pointer" onclick="copyWriteup()">📋 Copy to Clipboard</button>
+  </div>
+  <div id="writeupCopyStatus" style="font-size:12px;color:#3ecf6a;height:16px;margin-bottom:6px"></div>
+  <textarea id="writeupOutput" style="width:100%;min-height:480px;background:var(--pitch);color:var(--cream);border:1px solid rgba(245,200,66,0.25);border-radius:8px;padding:16px;font-family:'Courier New',monospace;font-size:13px;line-height:1.6;resize:vertical"></textarea>
 </div>
 
 <script>
@@ -1933,19 +2013,31 @@ function navigateToScorecard(personName) {
   }, 80);
 }
 
-function showTab(btn) {
+function showTab(btnOrTabName) {
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  const tab = btn.dataset.tab;
-  document.getElementById('panel-'+tab).classList.add('active');
-  btn.classList.add('active');
+  const tab = typeof btnOrTabName === 'string' ? btnOrTabName : btnOrTabName.dataset.tab;
+  const panel = document.getElementById('panel-'+tab);
+  if (!panel) return;
+  panel.classList.add('active');
+  if (typeof btnOrTabName !== 'string') btnOrTabName.classList.add('active');
   if (tab==='scorecards') renderScorecards();
   if (tab==='fixtures') { renderFixturesTab(); }
   if (tab==='leaderboard') renderGroupStandings();
   if (tab==='probability') { runProbabilitySimulation(); }
   if (tab==='impact') { populateImpactMatchSelect(); renderImpactScenarios(); }
   if (tab==='h2h') { populateH2HSelects(); renderH2H(); }
+  if (tab==='writeup') { generateDailyWriteup(); }
 }
+
+// Hidden route: visiting #daily-writeup jumps straight to the writeup
+// tab even though it has no button in the visible nav bar.
+function checkHashRoute() {
+  if (window.location.hash === '#daily-writeup') {
+    showTab('writeup');
+  }
+}
+window.addEventListener('hashchange', checkHashRoute);
 
 // ============================================================
 // CHAMPIONSHIP PROBABILITY — Monte Carlo Simulation
@@ -2528,6 +2620,240 @@ function renderH2H() {
 }
 
 // ============================================================
+// DAILY WRITEUP — copy-paste group chat recap
+// ============================================================
+function startOfDay(d) { const c = new Date(d); c.setHours(0,0,0,0); return c; }
+function addDays(d, n) { const c = new Date(d); c.setDate(c.getDate()+n); return c; }
+
+function resultEmoji(scoreA, scoreB) {
+  if (scoreA > scoreB) return '🟢';
+  if (scoreA < scoreB) return '🔴';
+  return '🟡';
+}
+
+function bigSwingTag(magnitude) {
+  if (magnitude >= 6) return '🔥 HUGE SWING';
+  if (magnitude >= 3) return '⚡ Big swing';
+  return null;
+}
+
+function generateDailyWriteup() {
+  const out = document.getElementById('writeupOutput');
+  if (!out) return;
+
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1);
+  const dayAfter = addDays(today, 2);
+
+  // ---- Standings: now vs before today's matches ----
+  const standingsNow = PARTICIPANTS.map(p => ({ name:p, pts: personTotal(p) }))
+    .sort((a,b) => b.pts - a.pts);
+  const rankNow = {};
+  standingsNow.forEach((p,i) => rankNow[p.name] = i+1);
+
+  // Reconstruct "before today" by subtracting points earned in matches
+  // that were played today (date === today, has a score).
+  const todaysFixtures = FIXTURES
+    .filter(f => f.scoreA !== null && f.scoreA !== undefined)
+    .filter(f => {
+      const [y,m,d] = f.date.split('-').map(Number);
+      const fDate = new Date(y, m-1, d);
+      return startOfDay(fDate).getTime() === today.getTime();
+    })
+    .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
+
+  // Points earned today per team, isolated to today's matches only
+  // (re-derive 3/1/0 plus any bonus rows that landed today is out of
+  // scope for a simple recap — group/KO match points only).
+  const pointsEarnedTodayByTeam = {};
+  todaysFixtures.forEach(f => {
+    const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
+    if (!ra.resolved || !rb.resolved) return;
+    let ptsA = 0, ptsB = 0;
+    if (f.scoreA > f.scoreB) ptsA = 3;
+    else if (f.scoreB > f.scoreA) ptsB = 3;
+    else { ptsA = 1; ptsB = 1; }
+    pointsEarnedTodayByTeam[ra.name] = (pointsEarnedTodayByTeam[ra.name]||0) + ptsA;
+    pointsEarnedTodayByTeam[rb.name] = (pointsEarnedTodayByTeam[rb.name]||0) + ptsB;
+  });
+
+  const standingsBefore = PARTICIPANTS.map(p => {
+    const earnedToday = ALLOCATION[p].reduce((s,t) => s + (pointsEarnedTodayByTeam[t.name]||0), 0);
+    return { name: p, pts: personTotal(p) - earnedToday };
+  }).sort((a,b) => b.pts - a.pts);
+  const rankBefore = {};
+  standingsBefore.forEach((p,i) => rankBefore[p.name] = i+1);
+
+  // ---- Section: Today's Results ----
+  let resultsSection = '';
+  if (todaysFixtures.length === 0) {
+    resultsSection = 'No matches were played today.';
+  } else {
+    resultsSection = todaysFixtures.map(f => {
+      const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
+      const nameA = ra.resolved ? ra.name : f.teamA;
+      const nameB = rb.resolved ? rb.name : f.teamB;
+      const flagA = ra.resolved ? getFlag(nameA) : '';
+      const flagB = rb.resolved ? getFlag(nameB) : '';
+      const personA = personForTeam(nameA);
+      const personB = personForTeam(nameB);
+      const emoji = resultEmoji(f.scoreA, f.scoreB);
+      let line = `${emoji} ${flagA} ${nameA} ${f.scoreA} - ${f.scoreB} ${nameB} ${flagB}`;
+      if (personA || personB) {
+        line += `  (${personA||'unowned'} vs ${personB||'unowned'})`;
+      }
+      // Surface a quick note on who benefited
+      const notes = [];
+      if (personA && pointsEarnedTodayByTeam[nameA] === 3) notes.push(`+3 for ${personA}`);
+      if (personB && pointsEarnedTodayByTeam[nameB] === 3) notes.push(`+3 for ${personB}`);
+      if (f.scoreA === f.scoreB) {
+        if (personA) notes.push(`+1 for ${personA}`);
+        if (personB) notes.push(`+1 for ${personB}`);
+      }
+      if (notes.length) line += `\n   → ${notes.join(', ')}`;
+      return line;
+    }).join('\n\n');
+  }
+
+  // ---- Section: Leaderboard movement ----
+  const movementLines = standingsNow.map(p => {
+    const before = rankBefore[p.name];
+    const now = rankNow[p.name];
+    const diff = before - now;
+    let arrow = '➡️';
+    if (diff > 0) arrow = `⬆️ +${diff}`;
+    else if (diff < 0) arrow = `⬇️ ${diff}`;
+    const medal = now === 1 ? '🥇' : now === 2 ? '🥈' : now === 3 ? '🥉' : '';
+    return `${String(now).padStart(2)}. ${medal}${medal?' ':''}${p.name} — ${p.pts} pts  ${arrow}`;
+  }).join('\n');
+
+  const leader = standingsNow[0];
+  const mover = [...standingsNow].map(p => ({ ...p, diff: rankBefore[p.name]-rankNow[p.name] }))
+    .sort((a,b) => b.diff - a.diff)[0];
+  const faller = [...standingsNow].map(p => ({ ...p, diff: rankBefore[p.name]-rankNow[p.name] }))
+    .sort((a,b) => a.diff - b.diff)[0];
+
+  let headline = `${leader.name} sits top of the pile on ${leader.pts} pts.`;
+  if (mover && mover.diff > 0) {
+    headline += ` Big mover today: ${mover.name}, up ${mover.diff} spot${mover.diff>1?'s':''}.`;
+  }
+  if (faller && faller.diff < 0 && faller.name !== mover?.name) {
+    headline += ` Rough day for ${faller.name}, down ${Math.abs(faller.diff)} spot${Math.abs(faller.diff)>1?'s':''}.`;
+  }
+
+  // ---- Section: Tomorrow's matches ----
+  const tomorrowFixtures = FIXTURES
+    .filter(f => f.scoreA === null || f.scoreA === undefined)
+    .filter(f => {
+      const dt = parseFixtureDateTime(f);
+      return dt >= tomorrow && dt < dayAfter;
+    })
+    .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
+
+  let tomorrowSection = '';
+  if (tomorrowFixtures.length === 0) {
+    tomorrowSection = 'No matches scheduled tomorrow.';
+  } else {
+    tomorrowSection = tomorrowFixtures.map(f => {
+      const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
+      const nameA = ra.resolved ? ra.name : f.teamA;
+      const nameB = rb.resolved ? rb.name : f.teamB;
+      const flagA = ra.resolved ? getFlag(nameA) : '';
+      const flagB = rb.resolved ? getFlag(nameB) : '';
+      const personA = ra.resolved ? personForTeam(nameA) : null;
+      const personB = rb.resolved ? personForTeam(nameB) : null;
+      let line = `${f.time} — ${flagA} ${nameA} vs ${nameB} ${flagB}`;
+      if (personA || personB) line += `  (${personA||'unowned'} vs ${personB||'unowned'})`;
+      return line;
+    }).join('\n');
+  }
+
+  // ---- Section: Matches that could shake things up ----
+  // Reuse the Impact Engine math: for each of tomorrow's sweep-staked
+  // matches, compute the leaderboard swing under a full win either way
+  // and flag it if the gap is large enough to matter.
+  const bigImpactLines = [];
+  tomorrowFixtures.forEach(f => {
+    const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
+    if (!ra.resolved || !rb.resolved) return;
+    const personA = personForTeam(ra.name);
+    const personB = personForTeam(rb.name);
+    if (!personA && !personB) return;
+
+    const boardWinA = computeHypotheticalLeaderboard(ra.name, rb.name, 'winA');
+    const boardWinB = computeHypotheticalLeaderboard(ra.name, rb.name, 'winB');
+    const rankInA = {}; boardWinA.forEach((p,i)=>rankInA[p.name]=i+1);
+    const rankInB = {}; boardWinB.forEach((p,i)=>rankInB[p.name]=i+1);
+
+    // Find the biggest single rank swing between the two outcomes
+    let maxSwing = 0, swingPerson = null;
+    PARTICIPANTS.forEach(p => {
+      const swing = Math.abs(rankInA[p] - rankInB[p]);
+      if (swing > maxSwing) { maxSwing = swing; swingPerson = p; }
+    });
+
+    const tag = bigSwingTag(maxSwing);
+    if (tag) {
+      bigImpactLines.push(
+        `${tag}: ${getFlag(ra.name)} ${ra.name} vs ${rb.name} ${getFlag(rb.name)} (${personA||'unowned'} vs ${personB||'unowned'}) — ` +
+        `result could move ${swingPerson} ${maxSwing} spot${maxSwing>1?'s':''} on the table.`
+      );
+    } else if (personA && personB) {
+      // Direct head-to-head between two participants is always worth flagging
+      bigImpactLines.push(
+        `👀 Direct sweep clash: ${personA} (${ra.name}) vs ${personB} (${rb.name}) — head-to-head bragging rights on the line.`
+      );
+    }
+  });
+
+  // ---- Assemble final text ----
+  const dateLabel = today.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' });
+  const lines = [];
+  lines.push(`🏆 WORLD CUP 2026 SWEEP — DAILY WRAP`);
+  lines.push(`${dateLabel}`);
+  lines.push('');
+  lines.push(headline);
+  lines.push('');
+  lines.push(`⚽ TODAY'S RESULTS`);
+  lines.push(resultsSection);
+  lines.push('');
+  lines.push(`📊 LEADERBOARD`);
+  lines.push(movementLines);
+  lines.push('');
+  if (bigImpactLines.length) {
+    lines.push(`🚨 WATCH OUT FOR TOMORROW`);
+    lines.push(bigImpactLines.join('\n'));
+    lines.push('');
+  }
+  lines.push(`📅 TOMORROW'S FIXTURES`);
+  lines.push(tomorrowSection);
+  lines.push('');
+  lines.push(`Full dashboard: stevengalea.github.io/2026-World-Cup`);
+
+  out.value = lines.join('\n');
+}
+
+function copyWriteup() {
+  const out = document.getElementById('writeupOutput');
+  const status = document.getElementById('writeupCopyStatus');
+  if (!out) return;
+  out.select();
+  navigator.clipboard.writeText(out.value).then(() => {
+    if (status) {
+      status.textContent = '✅ Copied to clipboard';
+      setTimeout(() => { status.textContent = ''; }, 2500);
+    }
+  }).catch(() => {
+    // Fallback for browsers without clipboard API permission
+    document.execCommand('copy');
+    if (status) {
+      status.textContent = '✅ Copied to clipboard';
+      setTimeout(() => { status.textContent = ''; }, 2500);
+    }
+  });
+}
+
+// ============================================================
 // INIT
 // ============================================================
 renderAllocation();
@@ -2547,7 +2873,31 @@ syncNavStickyOffset();
 renderGroupStandings();
 populateFixtureFilters();
 
-fetchAndRender(false);
+fetchAndRender(false).then(checkHashRoute);
+checkHashRoute(); // also run immediately in case fetch is slow, so the tab still opens (writeup regenerates once data lands)
+
+// ── BACK TO TOP ──
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+(function() {
+  const btn = document.getElementById('backToTopBtn');
+  if (!btn) return;
+  const SHOW_AFTER_PX = 400;
+  let ticking = false;
+  function updateVisibility() {
+    if (window.scrollY > SHOW_AFTER_PX) btn.classList.add('visible');
+    else btn.classList.remove('visible');
+    ticking = false;
+  }
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(updateVisibility);
+      ticking = true;
+    }
+  });
+  updateVisibility();
+})();
 
 </script>
 </body>
