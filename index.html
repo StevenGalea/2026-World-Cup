@@ -833,17 +833,23 @@
 
 <!-- DRAW & ODDS -->
 <div id="panel-draw" class="panel">
-  <p class="section-label">Team Draw — TAB Odds Tier Allocation</p>
+  <p class="section-label">Team Draw — Tier Allocation</p>
   <div class="status-banner setup" style="margin-bottom:16px;font-size:12px">
-    All 48 teams ranked by TAB decimal odds (favourite → outsider), split into 4 tiers of 11. Teams manually assigned by draw. 4 worst-odds teams excluded.
+    All 48 teams ranked by TAB decimal odds at draw time (favourite → outsider), split into 4 tiers of 11. Teams manually assigned by draw. 4 worst-odds teams excluded.
   </div>
   <div class="allocation-grid" id="allocationGrid"></div>
   <p class="section-label" style="margin-top:18px">Excluded Teams (4 Worst Odds)</p>
   <div id="excludedTeams" style="margin-bottom:28px"></div>
 
-  <p class="section-label" style="margin-top:28px">TAB Outright Odds — World Cup Winner</p>
+  <p class="section-label" style="margin-top:28px">Original Odds — World Cup Winner (at time of draw)</p>
   <div class="odds-table-wrap">
     <table class="odds-table" id="oddsTable"></table>
+  </div>
+
+  <p class="section-label" style="margin-top:28px">🔴 Live Odds (Polymarket) — World Cup Winner</p>
+  <div id="liveOddsStatus" style="font-size:11px;color:rgba(249,245,232,0.4);margin-bottom:10px"></div>
+  <div class="odds-table-wrap">
+    <table class="odds-table" id="liveOddsTable"></table>
   </div>
 </div>
 
@@ -889,7 +895,7 @@
       <div class="setup-step">
         <div>
           <strong>The Draw</strong>
-          <p>All 48 World Cup teams were ranked by TAB outright odds and split into 4 tiers of 11 (the 4 longest-odds teams — Cabo Verde, Jordan, Curaçao, Haiti — were excluded from the draw). Each of the 11 participants was randomly allocated one team from each tier, giving everyone 4 teams of mixed strength. See the <strong>🎟️ Draw & Odds</strong> tab for the full breakdown.</p>
+          <p>All 48 World Cup teams were ranked by TAB outright odds and split into 4 tiers of 11 (the 4 longest-odds teams — Cabo Verde, Jordan, Curaçao, Haiti — were excluded from the draw). Each of the 11 participants was randomly allocated one team from each tier, giving everyone 4 teams of mixed strength. See the <strong>🎟️ Draw & Odds</strong> tab for the full breakdown, including a Live Odds table sourced from Polymarket that updates periodically as the tournament progresses.</p>
         </div>
       </div>
       <div class="setup-step">
@@ -937,7 +943,7 @@
       <div class="setup-step">
         <div>
           <strong>🎲 Win %</strong>
-          <p>Runs a Monte Carlo simulation (1,500 simulated tournaments) using TAB implied odds as team strength, replaying the remaining group and knockout stages each time to estimate every participant's chance of winning the sweep outright. Recalculates automatically whenever live scores change — not on every visit — so it loads instantly most of the time.</p>
+          <p>Runs a Monte Carlo simulation (1,500 simulated tournaments) using live Polymarket implied odds as team strength (falling back to draw-day TAB odds if the live feed is unavailable), replaying the remaining group and knockout stages each time to estimate every participant's chance of winning the sweep outright. Recalculates automatically whenever live scores or odds change — not on every visit — so it loads instantly most of the time.</p>
         </div>
       </div>
       <div class="setup-step">
@@ -1139,6 +1145,46 @@ const ROUND_ABBR = {
 };
 
 let FIXTURES = [];
+
+// Live odds state: { teamName: decimalOdds }. Empty until/unless
+// odds_live.json successfully loads. Also tracks when it was last
+// fetched and whether the fetch ever succeeded, so the UI can be
+// honest about whether it's showing live or fallback data.
+let LIVE_ODDS = {};
+let liveOddsLastUpdated = null;
+let liveOddsAvailable = false;
+
+async function fetchLiveOdds() {
+  try {
+    const res = await fetch(LIVE_ODDS_URL + '?t=' + Math.floor(Date.now()/3600000), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    // Expected shape: { "updated": "2026-06-17T08:00:00Z", "odds": { "Spain": 5.25, ... } }
+    if (data && data.odds && typeof data.odds === 'object') {
+      LIVE_ODDS = data.odds;
+      liveOddsLastUpdated = data.updated || null;
+      liveOddsAvailable = true;
+    } else {
+      throw new Error('Unexpected odds_live.json shape');
+    }
+  } catch(e) {
+    console.warn('Live odds fetch failed, falling back to draw-day odds:', e.message);
+    liveOddsAvailable = false;
+  }
+}
+
+// The odds a team should be valued at right now: live odds if we have
+// a fresh number for that team, otherwise the original draw-day odds
+// baked into ALL_TEAMS. This is the single source of truth used by
+// both the Live Odds table and the Monte Carlo simulation, so the two
+// can never silently disagree with each other.
+function currentOdds(teamName) {
+  if (liveOddsAvailable && LIVE_ODDS[teamName] !== undefined && LIVE_ODDS[teamName] > 0) {
+    return LIVE_ODDS[teamName];
+  }
+  return TEAM_LOOKUP[teamName]?.odds;
+}
+
 
 // Convert "HH:MM UTC±N" + date to Melbourne time (AEST, fixed UTC+10
 // during June/July — no DST adjustment needed on either side).
@@ -1388,6 +1434,13 @@ let SCORES = {};
 const GITHUB_OWNER = 'StevenGalea';
 const GITHUB_REPO  = '2026-World-Cup';
 const GITHUB_BRANCH = 'main';
+// Same-origin file in this repo, populated by a scheduled GitHub
+// Action that pulls from Polymarket's public Gamma API (a genuinely
+// free, no-key, documented endpoint — not a scrape of a bookmaker's
+// site, which is JS-rendered and would risk breaching their ToS).
+// Falls back to the original draw-day odds on ALL_TEAMS if this file
+// is missing, stale, or doesn't cover a given team.
+const LIVE_ODDS_URL = 'https://stevengalea.github.io/2026-World-Cup/odds_live.json';
 
 async function fetchAndRender(showFeedback) {
   const btn = document.getElementById('refreshBtn');
@@ -1397,9 +1450,11 @@ async function fetchAndRender(showFeedback) {
   }
   try {
     await fetchOpenFootballFixtures();
+    await fetchLiveOdds();
     SCORES = computeScoresFromFixtures();
     invalidateProbCache();
     renderAll();
+    renderLiveOddsTable();
     if (document.getElementById('panel-fixtures').classList.contains('active')) {
       renderFixturesTab();
     }
@@ -1979,9 +2034,58 @@ function renderOddsTable() {
     <thead><tr>
       <th style="width:36px">#</th><th>Team</th>
       <th style="text-align:center">Grp</th><th>Tier</th>
-      <th class="right">TAB Odds</th>
+      <th class="right">Odds at Draw</th>
     </tr></thead><tbody>${rows}</tbody>`;
 }
+
+// Live odds table: same layout as the original odds table, sorted by
+// current odds (live where available, draw-day odds as fallback), so
+// movement since the draw is visible at a glance via the delta column.
+function renderLiveOddsTable() {
+  const table = document.getElementById('liveOddsTable');
+  const status = document.getElementById('liveOddsStatus');
+  if (!table) return;
+
+  const tierCls  = t => ['','odds-fav','odds-tier2','odds-tier3','odds-tier4','odds-excl'][t]||'odds-excl';
+  const teams = ALL_TEAMS
+    .map(t => ({ ...t, liveOdds: currentOdds(t.name), isLive: liveOddsAvailable && LIVE_ODDS[t.name] !== undefined }))
+    .sort((a,b) => a.liveOdds - b.liveOdds);
+
+  const rows = teams.map((t,i) => {
+    const excl = t.tier===5;
+    const delta = t.liveOdds - t.odds;
+    const deltaHtml = Math.abs(delta) < 0.01
+      ? `<span style="color:rgba(249,245,232,0.25)">–</span>`
+      : delta < 0
+        ? `<span style="color:#3ecf6a">▼ ${Math.abs(delta).toFixed(2)}</span>`
+        : `<span style="color:#e84040">▲ ${delta.toFixed(2)}</span>`;
+    return `<tr>
+      <td style="color:rgba(249,245,232,0.35);font-size:11px">${excl?'–':i+1}</td>
+      <td class="${excl?'odds-excl':''}">${getFlag(t.name)} ${t.name}${t.isLive?'':'<span style=\"font-size:9px;color:rgba(249,245,232,0.3);margin-left:4px\">(draw-day)</span>'}</td>
+      <td><span class="tier-badge tier-${Math.min(t.tier,4)}"></span>${excl?'<span style="opacity:0.4">Excl</span>':`T${t.tier}`}</td>
+      <td class="right ${tierCls(t.tier)}">$${t.liveOdds.toFixed(2)}</td>
+      <td class="right" style="font-size:11px">${deltaHtml}</td>
+    </tr>`;
+  }).join('');
+
+  table.innerHTML = `
+    <thead><tr>
+      <th style="width:36px">#</th><th>Team</th><th>Tier</th>
+      <th class="right">Live Odds</th><th class="right">vs Draw</th>
+    </tr></thead><tbody>${rows}</tbody>`;
+
+  if (status) {
+    if (liveOddsAvailable) {
+      const updatedLabel = liveOddsLastUpdated
+        ? new Date(liveOddsLastUpdated).toLocaleString('en-AU', { timeZone:'Australia/Melbourne', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+        : 'recently';
+      status.innerHTML = `Live odds last refreshed: <strong>${updatedLabel}</strong> (Melbourne time). Sourced from Polymarket's "World Cup Winner" prediction market — real money, crowd-sourced implied probabilities, refreshed periodically. Not TAB, and not a single bookmaker's line.`;
+    } else {
+      status.innerHTML = `⚠️ Live odds feed unavailable right now — showing draw-day odds as a fallback for every team below.`;
+    }
+  }
+}
+
 
 // ============================================================
 // HELPERS
@@ -2057,10 +2161,10 @@ function oddsToImpliedProb(decimalOdds) {
 // grouped by active teams still in the tournament.
 function buildTeamWinProbs() {
   const active = ALL_TEAMS.filter(t => t.tier <= 4 && !isEliminated(t.name));
-  const rawTotal = active.reduce((s, t) => s + oddsToImpliedProb(t.odds), 0);
+  const rawTotal = active.reduce((s, t) => s + oddsToImpliedProb(currentOdds(t.name)), 0);
   const probs = {};
   active.forEach(t => {
-    probs[t.name] = oddsToImpliedProb(t.odds) / rawTotal;
+    probs[t.name] = oddsToImpliedProb(currentOdds(t.name)) / rawTotal;
   });
   return probs;
 }
@@ -2277,7 +2381,10 @@ function renderProbabilityResults(results) {
 
   loading.style.display = 'none';
   grid.style.display = '';
-  simInfo.textContent = `Based on ${N_SIMS.toLocaleString()} Monte Carlo simulations using TAB implied odds as team strengths. Probabilities reflect the chance of winning the sweep outright given remaining fixtures.`;
+  const oddsSourceNote = liveOddsAvailable
+    ? "Polymarket's live World Cup Winner market"
+    : 'draw-day odds (live Polymarket odds unavailable right now)';
+  simInfo.textContent = `Based on ${N_SIMS.toLocaleString()} Monte Carlo simulations using implied probabilities from ${oddsSourceNote} as team strengths. Probabilities reflect the chance of winning the sweep outright given remaining fixtures.`;
 }
 
 // Full simulation scoring pass for one sim run
@@ -2637,6 +2744,69 @@ function bigSwingTag(magnitude) {
   return null;
 }
 
+// ── BANTER ──
+// Small phrase pools so the recap doesn't read identically every day.
+// pick() is deterministic-per-day (seeded by date) so regenerating the
+// same day's recap twice doesn't reshuffle the jokes underneath you.
+function banterSeed() {
+  const d = new Date();
+  return d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate();
+}
+function seededPick(arr, salt) {
+  const seed = banterSeed() + salt;
+  const x = Math.sin(seed) * 10000;
+  const idx = Math.floor((x - Math.floor(x)) * arr.length);
+  return arr[idx];
+}
+
+const LEADER_PHRASES = [
+  p => `${p} is sitting pretty at the top, feet up, sipping something cold.`,
+  p => `${p} remains the one everyone loves to hate at the top of the table.`,
+  p => `${p} is still running the show up top.`,
+  p => `${p} continues to enjoy the view from 1st — for now.`,
+  p => `${p} is currently the benchmark everyone else is chasing.`,
+];
+const BIG_MOVER_PHRASES = [
+  (p,n) => `${p} had themselves a day, climbing ${n} spot${n>1?'s':''}. Someone tell the others to watch their backs.`,
+  (p,n) => `${p} is the big mover, up ${n} spot${n>1?'s':''} — quietly making moves while everyone else was watching the football.`,
+  (p,n) => `${p} put on a clinic today, jumping ${n} spot${n>1?'s':''} up the table.`,
+  (p,n) => `${p} just leapfrogged ${n} spot${n>1?'s':''}. Don't look now, but they're coming.`,
+];
+const BIG_FALLER_PHRASES = [
+  (p,n) => `Tough day at the office for ${p}, sliding ${n} spot${n>1?'s':''}.`,
+  (p,n) => `${p} took a tumble today, dropping ${n} spot${n>1?'s':''}. Rough.`,
+  (p,n) => `Not ${p}'s finest day — down ${n} spot${n>1?'s':''} on the table.`,
+  (p,n) => `${p} is the one nursing a sore head tonight, down ${n} spot${n>1?'s':''}.`,
+];
+const NO_CHANGE_PHRASES = [
+  'A quiet one today — the table barely moved.',
+  'Nothing dramatic today, the standings held mostly firm.',
+  'A pretty uneventful day on the leaderboard front.',
+];
+const WIN_NOTE_PHRASES = [
+  p => `cha-ching, +3 for ${p}`,
+  p => `${p} banks the full 3`,
+  p => `nice little earner for ${p}`,
+  p => `${p} pockets the win`,
+];
+const DRAW_NOTE_PHRASES = [
+  p => `+1 splitter for ${p}`,
+  p => `${p} takes the consolation point`,
+  p => `${p} shares the spoils, +1`,
+];
+const INTRO_LINES = [
+  'Grab a drink, here\'s what went down.',
+  'Settle in, here\'s today\'s carnage.',
+  'Here\'s how the sweep shook out today.',
+  'Today in sweep drama:',
+];
+const OUTRO_LINES = [
+  'That\'s all from today — same time tomorrow, sweepers.',
+  'See you tomorrow for round two.',
+  'Until tomorrow, may the odds be ever in your favour.',
+  'More chaos incoming tomorrow. Stay tuned.',
+];
+
 function generateDailyWriteup() {
   const out = document.getElementById('writeupOutput');
   if (!out) return;
@@ -2687,9 +2857,9 @@ function generateDailyWriteup() {
   // ---- Section: Today's Results ----
   let resultsSection = '';
   if (todaysFixtures.length === 0) {
-    resultsSection = 'No matches were played today.';
+    resultsSection = 'No matches were played today. A rare day of peace.';
   } else {
-    resultsSection = todaysFixtures.map(f => {
+    resultsSection = todaysFixtures.map((f, idx) => {
       const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
       const nameA = ra.resolved ? ra.name : f.teamA;
       const nameB = rb.resolved ? rb.name : f.teamB;
@@ -2702,13 +2872,13 @@ function generateDailyWriteup() {
       if (personA || personB) {
         line += `  (${personA||'unowned'} vs ${personB||'unowned'})`;
       }
-      // Surface a quick note on who benefited
+      // Surface a quick note on who benefited, with a bit of flavour
       const notes = [];
-      if (personA && pointsEarnedTodayByTeam[nameA] === 3) notes.push(`+3 for ${personA}`);
-      if (personB && pointsEarnedTodayByTeam[nameB] === 3) notes.push(`+3 for ${personB}`);
+      if (personA && pointsEarnedTodayByTeam[nameA] === 3) notes.push(seededPick(WIN_NOTE_PHRASES, idx*7+1)(personA));
+      if (personB && pointsEarnedTodayByTeam[nameB] === 3) notes.push(seededPick(WIN_NOTE_PHRASES, idx*7+2)(personB));
       if (f.scoreA === f.scoreB) {
-        if (personA) notes.push(`+1 for ${personA}`);
-        if (personB) notes.push(`+1 for ${personB}`);
+        if (personA) notes.push(seededPick(DRAW_NOTE_PHRASES, idx*7+3)(personA));
+        if (personB) notes.push(seededPick(DRAW_NOTE_PHRASES, idx*7+4)(personB));
       }
       if (notes.length) line += `\n   → ${notes.join(', ')}`;
       return line;
@@ -2733,15 +2903,21 @@ function generateDailyWriteup() {
   const faller = [...standingsNow].map(p => ({ ...p, diff: rankBefore[p.name]-rankNow[p.name] }))
     .sort((a,b) => a.diff - b.diff)[0];
 
-  let headline = `${leader.name} sits top of the pile on ${leader.pts} pts.`;
+  let headline = seededPick(LEADER_PHRASES, 0)(leader.name);
   if (mover && mover.diff > 0) {
-    headline += ` Big mover today: ${mover.name}, up ${mover.diff} spot${mover.diff>1?'s':''}.`;
+    headline += ' ' + seededPick(BIG_MOVER_PHRASES, 11)(mover.name, mover.diff);
   }
   if (faller && faller.diff < 0 && faller.name !== mover?.name) {
-    headline += ` Rough day for ${faller.name}, down ${Math.abs(faller.diff)} spot${Math.abs(faller.diff)>1?'s':''}.`;
+    headline += ' ' + seededPick(BIG_FALLER_PHRASES, 23)(faller.name, Math.abs(faller.diff));
+  }
+  if ((!mover || mover.diff === 0) && (!faller || faller.diff === 0)) {
+    headline += ' ' + seededPick(NO_CHANGE_PHRASES, 31);
   }
 
-  // ---- Section: Tomorrow's matches ----
+  // ---- Section: Tomorrow's matches, with impact noted inline ----
+  // Condensed into a single list — each fixture appears once, and if
+  // it's a big swing or a direct sweep clash, that gets tagged right
+  // under the fixture rather than repeated in a separate section.
   const tomorrowFixtures = FIXTURES
     .filter(f => f.scoreA === null || f.scoreA === undefined)
     .filter(f => {
@@ -2751,8 +2927,9 @@ function generateDailyWriteup() {
     .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
 
   let tomorrowSection = '';
+  let bigSwingCount = 0;
   if (tomorrowFixtures.length === 0) {
-    tomorrowSection = 'No matches scheduled tomorrow.';
+    tomorrowSection = 'No matches scheduled tomorrow. Enjoy the breather.';
   } else {
     tomorrowSection = tomorrowFixtures.map(f => {
       const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
@@ -2764,53 +2941,37 @@ function generateDailyWriteup() {
       const personB = rb.resolved ? personForTeam(nameB) : null;
       let line = `${f.time} — ${flagA} ${nameA} vs ${nameB} ${flagB}`;
       if (personA || personB) line += `  (${personA||'unowned'} vs ${personB||'unowned'})`;
+
+      // Inline impact tag, reusing the Impact Engine math
+      if (ra.resolved && rb.resolved && (personA || personB)) {
+        const boardWinA = computeHypotheticalLeaderboard(nameA, nameB, 'winA');
+        const boardWinB = computeHypotheticalLeaderboard(nameA, nameB, 'winB');
+        const rankInA = {}; boardWinA.forEach((p,i)=>rankInA[p.name]=i+1);
+        const rankInB = {}; boardWinB.forEach((p,i)=>rankInB[p.name]=i+1);
+        let maxSwing = 0, swingPerson = null;
+        PARTICIPANTS.forEach(p => {
+          const swing = Math.abs(rankInA[p] - rankInB[p]);
+          if (swing > maxSwing) { maxSwing = swing; swingPerson = p; }
+        });
+        const tag = bigSwingTag(maxSwing);
+        if (tag) {
+          bigSwingCount++;
+          line += `\n   ${tag} — could shift ${swingPerson} ${maxSwing} spot${maxSwing>1?'s':''} on the table`;
+        } else if (personA && personB) {
+          line += `\n   👀 Direct sweep clash — bragging rights between ${personA} and ${personB}`;
+        }
+      }
       return line;
-    }).join('\n');
+    }).join('\n\n');
   }
-
-  // ---- Section: Matches that could shake things up ----
-  // Reuse the Impact Engine math: for each of tomorrow's sweep-staked
-  // matches, compute the leaderboard swing under a full win either way
-  // and flag it if the gap is large enough to matter.
-  const bigImpactLines = [];
-  tomorrowFixtures.forEach(f => {
-    const ra = resolveTeamCode(f.teamA), rb = resolveTeamCode(f.teamB);
-    if (!ra.resolved || !rb.resolved) return;
-    const personA = personForTeam(ra.name);
-    const personB = personForTeam(rb.name);
-    if (!personA && !personB) return;
-
-    const boardWinA = computeHypotheticalLeaderboard(ra.name, rb.name, 'winA');
-    const boardWinB = computeHypotheticalLeaderboard(ra.name, rb.name, 'winB');
-    const rankInA = {}; boardWinA.forEach((p,i)=>rankInA[p.name]=i+1);
-    const rankInB = {}; boardWinB.forEach((p,i)=>rankInB[p.name]=i+1);
-
-    // Find the biggest single rank swing between the two outcomes
-    let maxSwing = 0, swingPerson = null;
-    PARTICIPANTS.forEach(p => {
-      const swing = Math.abs(rankInA[p] - rankInB[p]);
-      if (swing > maxSwing) { maxSwing = swing; swingPerson = p; }
-    });
-
-    const tag = bigSwingTag(maxSwing);
-    if (tag) {
-      bigImpactLines.push(
-        `${tag}: ${getFlag(ra.name)} ${ra.name} vs ${rb.name} ${getFlag(rb.name)} (${personA||'unowned'} vs ${personB||'unowned'}) — ` +
-        `result could move ${swingPerson} ${maxSwing} spot${maxSwing>1?'s':''} on the table.`
-      );
-    } else if (personA && personB) {
-      // Direct head-to-head between two participants is always worth flagging
-      bigImpactLines.push(
-        `👀 Direct sweep clash: ${personA} (${ra.name}) vs ${personB} (${rb.name}) — head-to-head bragging rights on the line.`
-      );
-    }
-  });
 
   // ---- Assemble final text ----
   const dateLabel = today.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' });
   const lines = [];
   lines.push(`🏆 WORLD CUP 2026 SWEEP — DAILY WRAP`);
   lines.push(`${dateLabel}`);
+  lines.push('');
+  lines.push(seededPick(INTRO_LINES, 5));
   lines.push('');
   lines.push(headline);
   lines.push('');
@@ -2820,14 +2981,10 @@ function generateDailyWriteup() {
   lines.push(`📊 LEADERBOARD`);
   lines.push(movementLines);
   lines.push('');
-  if (bigImpactLines.length) {
-    lines.push(`🚨 WATCH OUT FOR TOMORROW`);
-    lines.push(bigImpactLines.join('\n'));
-    lines.push('');
-  }
-  lines.push(`📅 TOMORROW'S FIXTURES`);
+  lines.push(`📅 TOMORROW'S FIXTURES${bigSwingCount>0?' (with the table-shakers flagged)':''}`);
   lines.push(tomorrowSection);
   lines.push('');
+  lines.push(seededPick(OUTRO_LINES, 41));
   lines.push(`Full dashboard: stevengalea.github.io/2026-World-Cup`);
 
   out.value = lines.join('\n');
@@ -2858,6 +3015,7 @@ function copyWriteup() {
 // ============================================================
 renderAllocation();
 renderOddsTable();
+renderLiveOddsTable(); // shows draw-day fallback immediately; fetchAndRender refreshes with live data once it lands
 // Dynamically position sticky nav directly below the header,
 // regardless of header height on different screen sizes.
 function syncNavStickyOffset() {
