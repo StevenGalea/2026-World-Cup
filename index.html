@@ -2505,7 +2505,7 @@ function renderProbabilityResults(results) {
       return `<span class="prob-team-chip ${alive?'alive':''}">${getFlag(t.name)} ${t.name}</span>`;
     }).join('');
     const medals = ['🥇','🥈','🥉'];
-    return `<div class="prob-card">
+    return `<div class="prob-card" onclick="navigateToScorecard('${r.name}')" style="cursor:pointer">
       <div class="prob-name">${medals[i]||'#'+(i+1)} ${r.name}</div>
       <div class="prob-pct">${r.pct.toFixed(1)}<span>%</span></div>
       <div class="prob-bar-wrap"><div class="prob-bar" style="width:${(r.pct/maxPct*100).toFixed(1)}%"></div></div>
