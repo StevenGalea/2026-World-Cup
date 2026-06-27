@@ -492,6 +492,19 @@
   table.group-table td { padding: 3px 4px; text-align: center; color: rgba(249,245,232,0.8); }
   table.group-table td:first-child { text-align: left; }
   table.group-table tr.qualifying td { color: var(--green-score); font-weight: 600; }
+  table.group-table tr.third-advancing td { color: #f5a442; font-weight: 600; }
+  table.group-table tr.third-eliminated td { color: rgba(249,245,232,0.35); }
+  .best-third-card { background: var(--pitch); border: 1px solid rgba(245,164,66,0.2); border-radius: 6px; padding: 10px 14px; margin-bottom: 24px; }
+  .best-third-card h4 { font-family: 'Oswald', sans-serif; font-size: 12px; color: var(--gold); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .best-third-note { font-size: 10px; color: rgba(249,245,232,0.35); margin-bottom: 8px; }
+  table.best-third-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+  table.best-third-table th { color: rgba(249,245,232,0.35); font-weight: 400; text-align: center; padding: 2px 4px; font-family: 'Oswald', sans-serif; font-size: 10px; text-transform: uppercase; }
+  table.best-third-table th:first-child, table.best-third-table th:nth-child(2) { text-align: left; }
+  table.best-third-table td { padding: 3px 4px; text-align: center; color: rgba(249,245,232,0.8); }
+  table.best-third-table td:first-child, table.best-third-table td:nth-child(2) { text-align: left; }
+  table.best-third-table tr.advancing td { color: #f5a442; font-weight: 600; }
+  table.best-third-table tr.eliminated td { color: rgba(249,245,232,0.35); }
+  table.best-third-table tr.cutoff-row td { border-top: 1px dashed rgba(232,64,64,0.4); }
 
   /* NEXT MATCH WIDGET */
   .next-match-widget {
@@ -802,6 +815,9 @@
 
   <p class="section-label" style="margin-top:28px">Group Stage Standings</p>
   <div class="group-standings-grid" id="groupStandingsGrid"></div>
+
+  <p class="section-label" style="margin-top:4px">Best Third-Place Teams</p>
+  <div id="bestThirdContainer"></div>
 </div>
 
 <!-- SCORECARDS -->
@@ -1453,6 +1469,7 @@ async function fetchAndRender(showFeedback) {
     await fetchLiveOdds();
     SCORES = computeScoresFromFixtures();
     invalidateProbCache();
+    invalidateBestThirdCache();
     renderAll();
     renderLiveOddsTable();
     if (document.getElementById('panel-fixtures').classList.contains('active')) {
@@ -1780,6 +1797,108 @@ function filterFixturesByTeamAndNavigate(teamName) {
 
 // ============================================================
 // ELIMINATION TRACKER
+// ============================================================
+// BEST THIRD-PLACE TEAMS
+// FIFA tiebreaker order: pts → GD → GF → fair play → FIFA rank
+// Fair play data not available in openfootball; FIFA rank used as
+// the final tiebreaker (lower number = better rank = advances).
+// ============================================================
+const FIFA_RANK = {
+  "France": 2, "Spain": 3, "England": 4, "Portugal": 5, "Netherlands": 6,
+  "Argentina": 1, "Brazil": 7, "Germany": 12, "Belgium": 9, "Colombia": 14,
+  "Norway": 23, "Japan": 15, "Morocco": 13, "Mexico": 16, "USA": 11,
+  "Uruguay": 20, "Switzerland": 19, "Turkiye": 28, "Ecuador": 42, "Croatia": 10,
+  "Senegal": 22, "Sweden": 25, "Austria": 32, "Cote d Ivoire": 48,
+  "Paraguay": 60, "Canada": 40, "Scotland": 39, "Bosnia": 65, "Czechia": 37,
+  "Egypt": 34, "Korea": 24, "Australia": 21, "Algeria": 50, "Ghana": 55,
+  "Iran": 27, "Tunisia": 44, "Congo DR": 59, "Iraq": 71, "New Zealand": 97,
+  "Panama": 73, "Qatar": 58, "Saudi Arabia": 56, "South Africa": 66,
+  "Uzbekistan": 74, "Cabo Verde": 82, "Jordan": 89, "Curacao": 84, "Haiti": 99,
+};
+
+function buildBestThirdPlaceStandings() {
+  const allStandings = buildGroupStandingsDetailed();
+  const thirdPlacers = [];
+
+  Object.entries(allStandings).forEach(([g, rows]) => {
+    if (rows.length < 3) return;
+    const third = rows[2];
+    if (!TEAM_LOOKUP[third.team]) return;
+
+    const played = FIXTURES.filter(f =>
+      f.group === g && (f.teamA === third.team || f.teamB === third.team) &&
+      f.scoreA !== null && f.scoreA !== undefined
+    ).length;
+
+    thirdPlacers.push({
+      team: third.team,
+      flag: getFlag(third.team),
+      group: g,
+      w: third.w, d: third.d, l: third.l,
+      gf: third.gf, ga: third.ga, gd: third.gd,
+      pts: third.pts,
+      gamesPlayed: played,
+      fifaRank: FIFA_RANK[third.team] || 999,
+    });
+  });
+
+  thirdPlacers.sort((a, b) =>
+    b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.fifaRank - b.fifaRank
+  );
+
+  thirdPlacers.forEach((t, i) => { t.advancing = i < 8; });
+  return thirdPlacers;
+}
+
+let _bestThirdCache = null;
+function getBestThirdCache() {
+  if (!_bestThirdCache) _bestThirdCache = buildBestThirdPlaceStandings();
+  return _bestThirdCache;
+}
+function invalidateBestThirdCache() { _bestThirdCache = null; }
+
+function renderBestThirdPlace() {
+  const container = document.getElementById('bestThirdContainer');
+  if (!container) return;
+
+  const rows = getBestThirdCache();
+  if (rows.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:rgba(249,245,232,0.35);padding:8px 0">No groups complete yet — check back once group stage results are in.</p>';
+    return;
+  }
+
+  const totalGroups = [...new Set(ALL_TEAMS.filter(t => t.group && t.tier <= 4).map(t => t.group))].length;
+  const note = rows.length < totalGroups
+    ? `${rows.length} of ${totalGroups} groups complete — rankings provisional`
+    : 'All groups complete — final rankings';
+
+  const tableRows = rows.map((t, i) => {
+    const cls = i < 8 ? 'advancing' : 'eliminated';
+    const cutoff = i === 8 ? ' cutoff-row' : '';
+    const badge = i < 8
+      ? `<span style="font-size:9px;background:rgba(245,164,66,0.15);color:#f5a442;padding:1px 5px;border-radius:3px;margin-left:4px">ADV</span>`
+      : `<span style="font-size:9px;background:rgba(232,64,64,0.1);color:#e84040;padding:1px 5px;border-radius:3px;margin-left:4px">OUT</span>`;
+    return `<tr class="${cls}${cutoff}">
+      <td style="color:rgba(249,245,232,0.4);width:18px">${i + 1}</td>
+      <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${t.team}')">${t.flag} ${t.team}${badge}</td>
+      <td>Grp ${t.group}</td>
+      <td>${t.gamesPlayed}</td>
+      <td>${t.pts}</td>
+      <td>${t.gd >= 0 ? '+' : ''}${t.gd}</td>
+      <td>${t.gf}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `<div class="best-third-card">
+    <h4>Best 3rd-Place Rankings</h4>
+    <div class="best-third-note">${note} &middot; Tiebreakers: Pts &rarr; GD &rarr; GF &rarr; FIFA Rank &middot; Top 8 advance to R32</div>
+    <table class="best-third-table">
+      <thead><tr><th></th><th>Team</th><th>Grp</th><th>P</th><th>Pts</th><th>GD</th><th>GF</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </div>`;
+}
+
 // A team is "eliminated" if:
 //  - All 3 group games played (GS1,GS2,GS3 all > 0 entries exist
 //    in SCORES, i.e. the team has a recorded result) AND they
@@ -1826,7 +1945,17 @@ function isEliminated(teamName) {
   const standings = buildGroupStandingsDetailed()[team.group];
   if (!standings) return false;
   const rank = standings.findIndex(g => g.team === teamName);
-  return rank >= 2;
+  // Top 2 always advance
+  if (rank < 2) return false;
+  // 3rd place: check best-third table
+  if (rank === 2) {
+    const thirdData = getBestThirdCache().find(t => t.team === teamName);
+    // If we have data for this team, use it; if not yet ranked, don't mark eliminated yet
+    if (!thirdData) return false;
+    return !thirdData.advancing;
+  }
+  // 4th place always eliminated
+  return true;
 }
 
 // ============================================================
@@ -1838,13 +1967,18 @@ function renderGroupStandings() {
   if (!container) return;
   const groupLetters = Object.keys(standings).sort();
   container.innerHTML = groupLetters.map(g => {
-    const rows = standings[g].map((t,i) => `<tr class="${i<2?'qualifying':''}">
-      <td>${t.flag} ${t.team}</td>
-      <td>${t.w}</td>
-      <td>${t.d}</td>
-      <td>${t.l}</td>
-      <td>${t.pts}</td>
-    </tr>`).join('');
+    const rows = standings[g].map((t, i) => {
+      let cls = '';
+      if (i < 2) cls = 'qualifying';
+      else if (i === 2) cls = isEliminated(t.team) ? 'third-eliminated' : 'third-advancing';
+      return `<tr class="${cls}">
+        <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${t.team}')">${t.flag} ${t.team}</td>
+        <td>${t.w}</td>
+        <td>${t.d}</td>
+        <td>${t.l}</td>
+        <td>${t.pts}</td>
+      </tr>`;
+    }).join('');
     return `<div class="group-standing-card">
       <h4>Group ${g}</h4>
       <table class="group-table">
@@ -1890,6 +2024,7 @@ function nextMatchForPerson(personName) {
 function renderAll() {
   renderLeaderboard();
   renderGroupStandings();
+  renderBestThirdPlace();
   if (document.getElementById('panel-scorecards').classList.contains('active')) renderScorecards();
   if (document.getElementById('panel-fixtures').classList.contains('active')) {
     renderFixturesTab();
@@ -1953,7 +2088,7 @@ function renderScorecards() {
         return `<td class="pts-cell ${pts>0?'has-pts':pending?'pending':'zero'}">${pts>0?pts:pending?'⏳':'–'}</td>`;
       }).join('');
       return `<tr>
-        <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${team.name}')"><span class="tier-badge tier-${team.tier}"></span>${getFlag(team.name)} ${team.name} <small style="color:rgba(249,245,232,0.28)">${team.group}</small></td>
+        <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${team.name}')"><span class="tier-badge tier-${team.tier}"></span>${getFlag(team.name)} ${team.name} <small style="color:rgba(249,245,232,0.28)">${team.group}</small>${isEliminated(team.name) ? '<span class="eliminated-badge">OUT</span>' : ''}</td>
         ${cells}
         <td class="pts-cell" style="color:#c97ae8">${teamTotal(team.name)||'–'}</td>
       </tr>`;
@@ -2127,7 +2262,7 @@ function showTab(btnOrTabName) {
   if (typeof btnOrTabName !== 'string') btnOrTabName.classList.add('active');
   if (tab==='scorecards') renderScorecards();
   if (tab==='fixtures') { renderFixturesTab(); }
-  if (tab==='leaderboard') renderGroupStandings();
+  if (tab==='leaderboard') { renderGroupStandings(); renderBestThirdPlace(); }
   if (tab==='probability') { runProbabilitySimulation(); }
   if (tab==='impact') { populateImpactMatchSelect(); renderImpactScenarios(); }
   if (tab==='h2h') { populateH2HSelects(); renderH2H(); }
@@ -3029,6 +3164,7 @@ window.addEventListener('resize', syncNavStickyOffset);
 window.addEventListener('load', syncNavStickyOffset);
 syncNavStickyOffset();
 renderGroupStandings();
+renderBestThirdPlace();
 populateFixtureFilters();
 
 fetchAndRender(false).then(checkHashRoute);
