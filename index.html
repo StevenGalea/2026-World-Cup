@@ -357,6 +357,30 @@
     font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;
     color: rgba(249,245,232,0.4); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 14px;
   }
+  .collapsible-label {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+    font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;
+    color: rgba(249,245,232,0.4); text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 10px; padding: 6px 0;
+    border-bottom: 1px solid rgba(249,245,232,0.08);
+  }
+  .collapsible-label:hover { color: rgba(249,245,232,0.65); }
+  .collapsible-label .cl-chevron { font-size: 10px; transition: transform 0.2s; color: rgba(249,245,232,0.3); }
+  .collapsible-label.collapsed .cl-chevron { transform: rotate(-90deg); }
+  .collapsible-body { overflow: hidden; transition: max-height 0.25s ease; }
+  .collapsible-body.collapsed { max-height: 0 !important; }
+  #resultBanner {
+    position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
+    background: #1a2e1a; border: 1px solid rgba(245,164,66,0.4);
+    border-radius: 10px; padding: 10px 16px; max-width: 340px; width: calc(100% - 32px);
+    font-size: 12px; color: var(--cream); z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  #resultBanner.visible { opacity: 1; }
+  #resultBanner .rb-score { font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--gold); margin-bottom: 4px; }
+  #resultBanner .rb-impact { font-size: 11px; color: rgba(249,245,232,0.6); line-height: 1.5; }
 
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner {
@@ -911,6 +935,11 @@
 </nav>
 
 <!-- LEADERBOARD -->
+<div id="resultBanner" aria-live="polite">
+  <div class="rb-score" id="rbScore"></div>
+  <div class="rb-impact" id="rbImpact"></div>
+</div>
+
 <div id="panel-leaderboard" class="panel active">
   <div id="lb-status"></div>
   <div class="leaderboard-grid" id="leaderboardGrid">
@@ -997,18 +1026,33 @@
   </div>
 
   <div id="upcomingSection">
-    <p class="section-label">Upcoming Matches (Next 3 Days)</p>
-    <div id="upcomingFixtures" style="margin-bottom:28px"></div>
+    <div class="collapsible-label" onclick="toggleFixtureSection('upcoming')" id="upcomingLabel">
+      <span>Upcoming Matches <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none;font-family:inherit;font-size:11px">(Next 3 Days)</span></span>
+      <span class="cl-chevron">▼</span>
+    </div>
+    <div class="collapsible-body" id="upcomingBody" style="max-height:9999px">
+      <div id="upcomingFixtures" style="margin-bottom:28px"></div>
+    </div>
   </div>
 
   <div id="resultsSection">
-    <p class="section-label">Results <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(most recent first)</span></p>
-    <div id="resultsFixtures" style="margin-bottom:28px"></div>
+    <div class="collapsible-label collapsed" onclick="toggleFixtureSection('results')" id="resultsLabel">
+      <span>Results <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none;font-family:inherit;font-size:11px">(most recent first)</span></span>
+      <span class="cl-chevron">▼</span>
+    </div>
+    <div class="collapsible-body collapsed" id="resultsBody" style="max-height:0">
+      <div id="resultsFixtures" style="margin-bottom:28px"></div>
+    </div>
   </div>
 
   <div id="allSection">
-    <p class="section-label">Full Fixture List <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none">(Melbourne time)</span></p>
-    <div id="allFixtures"></div>
+    <div class="collapsible-label" onclick="toggleFixtureSection('all')" id="allLabel">
+      <span>Full Fixture List <span style="opacity:0.4;font-weight:400;letter-spacing:normal;text-transform:none;font-family:inherit;font-size:11px">(Melbourne time)</span></span>
+      <span class="cl-chevron">▼</span>
+    </div>
+    <div class="collapsible-body" id="allBody" style="max-height:9999px">
+      <div id="allFixtures"></div>
+    </div>
   </div>
   </div><!-- end fixtures-list-view -->
 
@@ -1439,10 +1483,6 @@ function resolveTeamCode(code) {
   return { name: code, flag:'🏳️', resolved:false };
 }
 
-function fixtureBadge(f) {
-  if (f.group) return f.group;
-  return ROUND_ABBR[f.round] || f.round || '';
-}
 
 // ============================================================
 // AUTO-SCORING — compute sweep points (3/1/0 + bonus) entirely
@@ -1587,18 +1627,100 @@ const GITHUB_BRANCH = 'main';
 // is missing, stale, or doesn't cover a given team.
 const LIVE_ODDS_URL = 'https://stevengalea.github.io/2026-World-Cup/odds_live.json';
 
+let _bannerTimer = null;
+function showResultBanner(scoreLine, impactLines) {
+  const banner = document.getElementById('resultBanner');
+  const rbScore = document.getElementById('rbScore');
+  const rbImpact = document.getElementById('rbImpact');
+  if (!banner || !rbScore || !rbImpact) return;
+  rbScore.textContent = scoreLine;
+  rbImpact.innerHTML = impactLines.join('<br>');
+  banner.classList.add('visible');
+  if (_bannerTimer) clearTimeout(_bannerTimer);
+  _bannerTimer = setTimeout(() => { banner.classList.remove('visible'); }, 5000);
+}
+
+function buildResultBanner(prevFixtures, prevPersonTotals, prevRankMap) {
+  // Find matches that are newly completed since last fetch
+  const newlyCompleted = FIXTURES.filter(f => {
+    if (f.scoreA === null || f.scoreA === undefined) return false;
+    const prev = prevFixtures.find(p => p.teamA === f.teamA && p.teamB === f.teamB && p.round === f.round);
+    return !prev || prev.scoreA === null || prev.scoreA === undefined;
+  });
+  if (newlyCompleted.length === 0) return;
+
+  // Use the most recently completed match
+  const latest = newlyCompleted.sort((a, b) => parseFixtureDateTime(b) - parseFixtureDateTime(a))[0];
+  const ra = resolveSlotCode(latest.teamA);
+  const rb = resolveSlotCode(latest.teamB);
+  const nameA = ra.resolved ? ra.name : latest.teamA;
+  const nameB = rb.resolved ? rb.name : latest.teamB;
+  const flagA = getFlag(nameA), flagB = getFlag(nameB);
+
+  let scoreLabel = `Final Score | ${flagA} ${nameA} ${latest.scoreA}`;
+  if (latest.pensA != null) scoreLabel += ` (${latest.pensA})`;
+  scoreLabel += ` – ${latest.scoreB}`;
+  if (latest.pensB != null) scoreLabel += ` (${latest.pensB})`;
+  scoreLabel += ` ${flagB} ${nameB}`;
+
+  // Calculate leaderboard changes
+  const newStandings = PARTICIPANTS.map(p => ({ name: p, total: personTotal(p) }))
+    .sort((a, b) => b.total - a.total);
+  const newRankMap = {};
+  newStandings.forEach((p, i) => { newRankMap[p.name] = i + 1; });
+
+  const impacts = [];
+  PARTICIPANTS.forEach(person => {
+    const oldPts = prevPersonTotals[person] || 0;
+    const newPts = personTotal(person);
+    const ptsDiff = newPts - oldPts;
+    if (ptsDiff <= 0) return;
+    const oldRank = prevRankMap[person] || '?';
+    const newRank = newRankMap[person] || '?';
+    const rankDiff = typeof oldRank === 'number' && typeof newRank === 'number' ? oldRank - newRank : 0;
+    let line = `${person} +${ptsDiff} pt${ptsDiff !== 1 ? 's' : ''}`;
+    if (rankDiff > 0) line += ` ↑${rankDiff} spot${rankDiff !== 1 ? 's' : ''}`;
+    else if (rankDiff < 0) line += ` ↓${Math.abs(rankDiff)} spot${Math.abs(rankDiff) !== 1 ? 's' : ''}`;
+    impacts.push(line);
+  });
+
+  if (newlyCompleted.length > 1) {
+    scoreLabel = `${newlyCompleted.length} new results | Latest: ${flagA} ${nameA} ${latest.scoreA}–${latest.scoreB} ${flagB} ${nameB}`;
+  }
+
+  showResultBanner(scoreLabel, impacts.length ? impacts : ['No sweep team points this match']);
+}
+
 async function fetchAndRender(showFeedback) {
   const btn = document.getElementById('refreshBtn');
   if (showFeedback) {
     if (btn) btn.classList.add('spinning');
     showStatus('lb-status','loading','<span class="spinner"></span> Fetching live results…');
   }
+
+  // Snapshot state before fetch for banner comparison
+  const prevFixtures = FIXTURES.map(f => ({ ...f }));
+  const prevPersonTotals = {};
+  PARTICIPANTS.forEach(p => { prevPersonTotals[p] = personTotal(p); });
+  const prevStandings = PARTICIPANTS.map(p => ({ name: p, total: personTotal(p) })).sort((a,b) => b.total - a.total);
+  const prevRankMap = {};
+  prevStandings.forEach((p, i) => { prevRankMap[p.name] = i + 1; });
+
   try {
     await fetchOpenFootballFixtures();
     await fetchLiveOdds();
     SCORES = computeScoresFromFixtures();
     invalidateProbCache();
     invalidateBestThirdCache();
+    invalidateGroupStandingsCache();
+    invalidateKoEliminatedCache();
+
+    // Show banner only on the leaderboard tab and only if scores changed
+    const isLeaderboardActive = document.getElementById('panel-leaderboard')?.classList.contains('active');
+    if (isLeaderboardActive) {
+      buildResultBanner(prevFixtures, prevPersonTotals, prevRankMap);
+    }
+
     renderAll();
     renderLiveOddsTable();
     if (document.getElementById('panel-fixtures').classList.contains('active')) {
@@ -1756,6 +1878,22 @@ function renderUpcomingFixtures() {
     html += fixtureCardHtml(f);
   });
   container.innerHTML = html;
+}
+
+function toggleFixtureSection(key) {
+  const label = document.getElementById(key + 'Label');
+  const body  = document.getElementById(key + 'Body');
+  if (!label || !body) return;
+  const isCollapsed = label.classList.contains('collapsed');
+  if (isCollapsed) {
+    label.classList.remove('collapsed');
+    body.classList.remove('collapsed');
+    body.style.maxHeight = '9999px';
+  } else {
+    label.classList.add('collapsed');
+    body.classList.add('collapsed');
+    body.style.maxHeight = '0';
+  }
 }
 
 function renderResults() {
@@ -2544,9 +2682,10 @@ function bkMatchHtml(codeA, codeB, fixData, isFinal, matchLabel) {
   }
 
   const timeStr = fixData && fixData.time ? fixData.time : '';
+  const dateStr = fixData && fixData.date ? new Date(fixData.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
   const headerParts = [];
   if (matchLabel) headerParts.push(`<span style="font-size:9px;font-family:'Oswald',sans-serif;color:var(--gold);letter-spacing:0.5px">${matchLabel}</span>`);
-  if (timeStr) headerParts.push(`<span style="font-size:9px;color:rgba(249,245,232,0.3);margin-left:auto">${timeStr}</span>`);
+  if (dateStr || timeStr) headerParts.push(`<span style="font-size:9px;color:rgba(249,245,232,0.3);margin-left:auto">${dateStr}${dateStr && timeStr ? ' · ' : ''}${timeStr}</span>`);
   const headerHtml = headerParts.length
     ? `<div style="display:flex;align-items:center;gap:4px;padding:3px 7px 2px;border-bottom:1px solid rgba(255,255,255,0.05)">${headerParts.join('')}</div>`
     : '';
@@ -3004,7 +3143,7 @@ function getBestThirdCache() {
   if (!_bestThirdCache) _bestThirdCache = buildBestThirdPlaceStandings();
   return _bestThirdCache;
 }
-function invalidateBestThirdCache() { _bestThirdCache = null; }
+function invalidateBestThirdCache() { _bestThirdCache = null; _groupStandingsCache = null; _koEliminatedCache = null; }
 
 function renderBestThirdPlace() {
   const container = document.getElementById('bestThirdContainer');
@@ -3058,14 +3197,11 @@ function renderBestThirdPlace() {
 //  - Knockout: a team with 0 pts in a KO round where Bonus hasn't
 //    advanced them — approximate via group qualification only for now
 // ============================================================
-function groupGamesPlayed(teamName) {
-  const s = SCORES[teamName] || {};
-  // crude heuristic: count rounds with a non-zero OR explicitly recorded value
-  // Since JSON always has the keys, we instead rely on group standings completeness
-  return s;
-}
+let _groupStandingsCache = null;
+function invalidateGroupStandingsCache() { _groupStandingsCache = null; }
 
 function buildGroupStandingsDetailed() {
+  if (_groupStandingsCache) return _groupStandingsCache;
   // group -> [{team, flag, w, d, l, gf, ga, gd, pts}]
   const groups = {};
   ALL_TEAMS.filter(t => t.group).forEach(t => {
@@ -3084,26 +3220,55 @@ function buildGroupStandingsDetailed() {
   Object.keys(groups).forEach(g => {
     groups[g].sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
   });
+  _groupStandingsCache = groups;
   return groups;
+}
+
+let _koEliminatedCache = null;
+function invalidateKoEliminatedCache() { _koEliminatedCache = null; }
+
+function buildKoEliminatedSet() {
+  const eliminated = new Set();
+  for (const f of FIXTURES) {
+    const roundKey = KO_ROUND_KEY[f.round];
+    if (!roundKey) continue;
+    if (f.scoreA === null || f.scoreA === undefined) continue;
+    if (f.round === 'Match for third place') continue;
+    const ra = resolveSlotCode(f.teamA);
+    const rb = resolveSlotCode(f.teamB);
+    if (!ra.resolved || !rb.resolved) continue;
+    let loser = null;
+    if (f.scoreA > f.scoreB)       loser = ra.name;
+    else if (f.scoreB > f.scoreA)  loser = rb.name;
+    else if (f.pensA != null)      loser = f.pensA > f.pensB ? rb.name : ra.name;
+    if (loser) eliminated.add(loser);
+  }
+  return eliminated;
+}
+
+function isEliminatedInKO(teamName) {
+  if (!_koEliminatedCache) _koEliminatedCache = buildKoEliminatedSet();
+  return _koEliminatedCache.has(teamName);
 }
 
 function isEliminated(teamName) {
   const team = TEAM_LOOKUP[teamName];
   if (!team || team.tier > 4) return false;
+
+  // KO stage elimination takes priority -- check it first
+  if (isEliminatedInKO(teamName)) return true;
+
+  // Group stage elimination
   if (!isGroupComplete(team.group)) return false;
   const standings = buildGroupStandingsDetailed()[team.group];
   if (!standings) return false;
   const rank = standings.findIndex(g => g.team === teamName);
-  // Top 2 always advance
   if (rank < 2) return false;
-  // 3rd place: check best-third table
   if (rank === 2) {
     const thirdData = getBestThirdCache().find(t => t.team === teamName);
-    // If we have data for this team, use it; if not yet ranked, don't mark eliminated yet
     if (!thirdData) return false;
     return !thirdData.advancing;
   }
-  // 4th place always eliminated
   return true;
 }
 
@@ -3558,17 +3723,6 @@ function simulateKnockout(qualifiers, winProbs) {
 
 // Score a hypothetical tournament outcome for a given person.
 // We only need the additional points beyond the already-earned base.
-function simPersonTotal(person, tournamentWinner, groupQualifiers, winProbs) {
-  // Re-run computeScoresFromFixtures gives us the base (current) score.
-  // For simulation we compute from scratch against a hypothetical bracket.
-  // Fast path: just accumulate extra KO points per team.
-  let total = personTotal(person);
-  // personTotal already has current group + KO points from live results.
-  // The simulation adds *future* KO round points for teams still alive.
-  // This is complex to do perfectly; instead we run a lightweight full rescore.
-  return total; // placeholder — see below for full approach
-}
-
 // Cache: simulation only re-runs when scores have actually changed
 // (triggered from fetchAndRender), not on every tab click.
 let probResultsCache = null;
