@@ -2682,7 +2682,9 @@ function bkMatchHtml(codeA, codeB, fixData, isFinal, matchLabel) {
   }
 
   const timeStr = fixData && fixData.time ? fixData.time : '';
-  const dateStr = fixData && fixData.date ? new Date(fixData.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+  const dateStr = fixData && fixData.date
+    ? new Date(fixData.date).toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' })
+    : '';
   const headerParts = [];
   if (matchLabel) headerParts.push(`<span style="font-size:9px;font-family:'Oswald',sans-serif;color:var(--gold);letter-spacing:0.5px">${matchLabel}</span>`);
   if (dateStr || timeStr) headerParts.push(`<span style="font-size:9px;color:rgba(249,245,232,0.3);margin-left:auto">${dateStr}${dateStr && timeStr ? ' · ' : ''}${timeStr}</span>`);
@@ -2845,20 +2847,21 @@ function renderBracketDesktop() {
     return `<div class="bk-match-wrap">${spacer}${qfCardHtml(slotIdx, label)}</div>`;
   }).join('');
 
-  // Left SF: M101
+  // Left SF: M101 -- sits lower in the column to align with QF winners
   const leftSFHtml = `<div class="bk-match-wrap"><div class="bk-spacer" style="height:${U*3.5}px"></div>${sfCardHtml(0, 'M101')}</div>`;
 
-  // Final + 3rd place (centre)
+  // Final + 3rd place (centre) -- Final at top, big trophy, 3rd place at bottom
   const finalFix = getKoFixture('Final', 0);
   const thirdFix = getKoFixture('Match for third place', 0);
   const finalA = finalFix ? finalFix.teamA : 'W_sf1';
   const finalB = finalFix ? finalFix.teamB : 'W_sf2';
   const thirdA = thirdFix ? thirdFix.teamA : 'L_sf1';
   const thirdB = thirdFix ? thirdFix.teamB : 'L_sf2';
-  const centreHtml = `<div class="bk-match-wrap">
-    <div class="bk-spacer" style="height:${U*4}px"></div>
+  const centreHtml = `<div class="bk-match-wrap" style="display:flex;flex-direction:column;align-items:center;width:100%">
+    <div style="font-family:'Oswald',sans-serif;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;text-align:center;margin-bottom:4px">🏆 World Champion</div>
     ${bkMatchHtml(finalA, finalB, finalFix, true, 'M104')}
-    <div style="text-align:center;font-family:'Oswald',sans-serif;font-size:9px;color:rgba(249,245,232,0.25);letter-spacing:1px;text-transform:uppercase;margin-top:14px;margin-bottom:4px">3rd Place</div>
+    <div style="text-align:center;font-size:48px;line-height:1;margin:16px 0 10px;filter:drop-shadow(0 0 12px rgba(245,200,66,0.5))">🏆</div>
+    <div style="font-family:'Oswald',sans-serif;font-size:9px;color:rgba(249,245,232,0.35);text-transform:uppercase;letter-spacing:1px;text-align:center;margin-bottom:4px">3rd Place</div>
     ${bkMatchHtml(thirdA, thirdB, thirdFix, false, 'M103')}
   </div>`;
 
@@ -3080,6 +3083,8 @@ function filterFixturesByTeamAndNavigate(teamName) {
   const ts = document.getElementById('filterTeamSelect'); if (ts) ts.value = teamName;
   const ps = document.getElementById('filterPersonSelect'); if (ps) ps.value = '';
   document.getElementById('clearFilterBtn').style.display = '';
+  // Always switch to list view so the filtered results are visible
+  setFixtureView('list');
   renderFixturesTab();
 }
 
@@ -3336,6 +3341,8 @@ function nextMatchForPerson(personName) {
 }
 
 function renderAll() {
+  // Always invalidate derived caches so renders reflect latest FIXTURES
+  invalidateBestThirdCache();
   renderLeaderboard();
   renderGroupStandings();
   renderBestThirdPlace();
