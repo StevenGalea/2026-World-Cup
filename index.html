@@ -373,14 +373,15 @@
   #resultBanner {
     position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
     background: #1a2e1a; border: 1px solid rgba(245,164,66,0.4);
-    border-radius: 10px; padding: 10px 16px; max-width: 340px; width: calc(100% - 32px);
+    border-radius: 10px; padding: 12px 16px; max-width: 400px; width: calc(100% - 32px);
+    max-height: 70vh; overflow-y: auto;
     font-size: 12px; color: var(--cream); z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     opacity: 0; pointer-events: none;
     transition: opacity 0.4s ease;
   }
   #resultBanner.visible { opacity: 1; }
-  #resultBanner .rb-score { font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--gold); margin-bottom: 4px; }
-  #resultBanner .rb-impact { font-size: 11px; color: rgba(249,245,232,0.6); line-height: 1.5; }
+  #resultBanner .rb-score { font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--gold); margin-bottom: 8px; }
+  #resultBanner .rb-impact { font-size: 11px; color: rgba(249,245,232,0.6); line-height: 1.6; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px; }
 
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner {
@@ -1412,8 +1413,8 @@ async function fetchOpenFootballFixtures() {
         venue: m.ground,
         scoreA: m.score ? m.score.ft[0] : null,
         scoreB: m.score ? m.score.ft[1] : null,
-        pensA: (m.score && m.score.pens) ? m.score.pens[0] : null,
-        pensB: (m.score && m.score.pens) ? m.score.pens[1] : null,
+        pensA: (m.score && m.score.p) ? m.score.p[0] : null,
+        pensB: (m.score && m.score.p) ? m.score.p[1] : null,
       };
     });
   } catch(e) {
@@ -1628,12 +1629,12 @@ const GITHUB_BRANCH = 'main';
 const LIVE_ODDS_URL = 'https://stevengalea.github.io/2026-World-Cup/odds_live.json';
 
 let _bannerTimer = null;
-function showResultBanner(scoreLine, impactLines) {
+function showResultBanner(scoreHtml, impactLines) {
   const banner = document.getElementById('resultBanner');
   const rbScore = document.getElementById('rbScore');
   const rbImpact = document.getElementById('rbImpact');
   if (!banner || !rbScore || !rbImpact) return;
-  rbScore.textContent = scoreLine;
+  rbScore.innerHTML = scoreHtml;
   rbImpact.innerHTML = impactLines.join('<br>');
   banner.classList.add('visible');
   if (_bannerTimer) clearTimeout(_bannerTimer);
@@ -1641,54 +1642,89 @@ function showResultBanner(scoreLine, impactLines) {
 }
 
 function buildResultBanner(prevFixtures, prevPersonTotals, prevRankMap) {
-  // Find matches that are newly completed since last fetch
-  const newlyCompleted = FIXTURES.filter(f => {
+  // Today's date in Melbourne local time (fixtures are already converted to Melbourne time)
+  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
+
+  // Matches completed today, that are newly completed since last fetch
+  const todaysNewResults = FIXTURES.filter(f => {
     if (f.scoreA === null || f.scoreA === undefined) return false;
+    if (f.date !== todayStr) return false;
     const prev = prevFixtures.find(p => p.teamA === f.teamA && p.teamB === f.teamB && p.round === f.round);
     return !prev || prev.scoreA === null || prev.scoreA === undefined;
   });
-  if (newlyCompleted.length === 0) return;
+  if (todaysNewResults.length === 0) return;
 
-  // Use the most recently completed match
-  const latest = newlyCompleted.sort((a, b) => parseFixtureDateTime(b) - parseFixtureDateTime(a))[0];
-  const ra = resolveSlotCode(latest.teamA);
-  const rb = resolveSlotCode(latest.teamB);
-  const nameA = ra.resolved ? ra.name : latest.teamA;
-  const nameB = rb.resolved ? rb.name : latest.teamB;
-  const flagA = getFlag(nameA), flagB = getFlag(nameB);
+  const sorted = todaysNewResults.sort((a, b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
 
-  let scoreLabel = `Final Score | ${flagA} ${nameA} ${latest.scoreA}`;
-  if (latest.pensA != null) scoreLabel += ` (${latest.pensA})`;
-  scoreLabel += ` – ${latest.scoreB}`;
-  if (latest.pensB != null) scoreLabel += ` (${latest.pensB})`;
-  scoreLabel += ` ${flagB} ${nameB}`;
+  // Build "Team (Person) score - Team (Person) score" line per match
+  const matchLines = sorted.map(f => {
+    const ra = resolveSlotCode(f.teamA);
+    const rb = resolveSlotCode(f.teamB);
+    const nameA = ra.resolved ? ra.name : f.teamA;
+    const nameB = rb.resolved ? rb.name : f.teamB;
+    const personA = ra.resolved ? personForTeam(nameA) : null;
+    const personB = rb.resolved ? personForTeam(nameB) : null;
+    const scoreA = f.pensA != null ? `${f.scoreA}(${f.pensA})` : `${f.scoreA}`;
+    const scoreB = f.pensB != null ? `${f.scoreB}(${f.pensB})` : `${f.scoreB}`;
+    const labelA = personA ? `${nameA} (${personA})` : nameA;
+    const labelB = personB ? `${nameB} (${personB})` : nameB;
+    return `${labelA} ${scoreA} - ${labelB} ${scoreB}`;
+  });
 
-  // Calculate leaderboard changes
+  const headerHtml = `<div style="margin-bottom:6px">${sorted.length} Result${sorted.length !== 1 ? 's' : ''} Today:</div>`
+    + matchLines.map(l => `<div style="font-weight:400;font-size:11px;color:rgba(249,245,232,0.85);margin-bottom:2px">${l}</div>`).join('');
+
+  // Points earned strictly from today's newly-completed matches, attributed per person.
+  // Re-run the scoring delta team-by-team rather than using lifetime totals, so a stale
+  // (e.g. multi-day-old) snapshot never inflates the figures shown here.
+  const pointsGainedToday = {};
+  PARTICIPANTS.forEach(p => { pointsGainedToday[p] = 0; });
+
+  sorted.forEach(f => {
+    const roundKey = KO_ROUND_KEY[f.round] || (f.group ? ['GS1','GS2','GS3'][matchIndexInGroup(f)] : null);
+    if (!roundKey) return;
+    const ra = resolveSlotCode(f.teamA);
+    const rb = resolveSlotCode(f.teamB);
+    if (!ra.resolved || !rb.resolved) return;
+    const personA = personForTeam(ra.name);
+    const personB = personForTeam(rb.name);
+    const ptsA = getScore(ra.name, roundKey);
+    const ptsB = getScore(rb.name, roundKey);
+    if (personA && ptsA) pointsGainedToday[personA] = (pointsGainedToday[personA] || 0) + ptsA;
+    if (personB && ptsB) pointsGainedToday[personB] = (pointsGainedToday[personB] || 0) + ptsB;
+  });
+
+  // Current leaderboard standings + rank movement vs the pre-fetch snapshot
   const newStandings = PARTICIPANTS.map(p => ({ name: p, total: personTotal(p) }))
     .sort((a, b) => b.total - a.total);
   const newRankMap = {};
   newStandings.forEach((p, i) => { newRankMap[p.name] = i + 1; });
 
-  const impacts = [];
-  PARTICIPANTS.forEach(person => {
-    const oldPts = prevPersonTotals[person] || 0;
-    const newPts = personTotal(person);
-    const ptsDiff = newPts - oldPts;
-    if (ptsDiff <= 0) return;
-    const oldRank = prevRankMap[person] || '?';
-    const newRank = newRankMap[person] || '?';
-    const rankDiff = typeof oldRank === 'number' && typeof newRank === 'number' ? oldRank - newRank : 0;
-    let line = `${person} +${ptsDiff} pt${ptsDiff !== 1 ? 's' : ''}`;
-    if (rankDiff > 0) line += ` ↑${rankDiff} spot${rankDiff !== 1 ? 's' : ''}`;
-    else if (rankDiff < 0) line += ` ↓${Math.abs(rankDiff)} spot${Math.abs(rankDiff) !== 1 ? 's' : ''}`;
-    impacts.push(line);
-  });
+  const impacts = newStandings
+    .filter(p => pointsGainedToday[p.name] > 0)
+    .map(p => {
+      const ptsDiff = pointsGainedToday[p.name];
+      const oldRank = prevRankMap[p.name] || '?';
+      const newRank = newRankMap[p.name] || '?';
+      const rankDiff = typeof oldRank === 'number' && typeof newRank === 'number' ? oldRank - newRank : 0;
+      let line = `${p.name} +${ptsDiff} pt${ptsDiff !== 1 ? 's' : ''} (now #${newRank}, ${p.total} pts)`;
+      if (rankDiff > 0) line += ` ↑${rankDiff}`;
+      else if (rankDiff < 0) line += ` ↓${Math.abs(rankDiff)}`;
+      return line;
+    });
 
-  if (newlyCompleted.length > 1) {
-    scoreLabel = `${newlyCompleted.length} new results | Latest: ${flagA} ${nameA} ${latest.scoreA}–${latest.scoreB} ${flagB} ${nameB}`;
-  }
+  showResultBanner(headerHtml, impacts.length ? impacts : ['No sweep team points from today\u2019s results']);
+}
 
-  showResultBanner(scoreLabel, impacts.length ? impacts : ['No sweep team points this match']);
+// Find a fixture's position (0,1,2) within its team's group-stage match order,
+// used to map it to GS1/GS2/GS3 for today's banner points calc.
+function matchIndexInGroup(fixture) {
+  if (!fixture.group) return null;
+  const sameGroupForTeamA = FIXTURES
+    .filter(f => f.group === fixture.group && (f.teamA === fixture.teamA || f.teamB === fixture.teamA))
+    .sort((a, b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
+  const idx = sameGroupForTeamA.findIndex(f => f === fixture);
+  return idx >= 0 ? idx : 0;
 }
 
 async function fetchAndRender(showFeedback) {
@@ -1784,6 +1820,14 @@ function isRoundPending(teamName, roundKey) {
 // ============================================================
 // FIXTURE HELPERS
 // ============================================================
+// Format a score string, showing penalties in brackets when applicable
+// e.g. "1 - 1" normally, "1(3) - 1(4)" for a penalty shootout
+function formatScore(scoreA, scoreB, pensA, pensB) {
+  const a = pensA != null ? `${scoreA}(${pensA})` : `${scoreA}`;
+  const b = pensB != null ? `${scoreB}(${pensB})` : `${scoreB}`;
+  return `${a} - ${b}`;
+}
+
 function parseFixtureDateTime(f) {
   // Combine date + time into a Date object (Melbourne time, naive parse)
   const [y,m,d] = f.date.split('-').map(Number);
@@ -1829,7 +1873,7 @@ function fixtureCardHtml(f) {
     timeLabel = f.time;
   }
   const scoreHtml = hasScore
-    ? `<span class="fixture-score">${f.scoreA} - ${f.scoreB}</span>`
+    ? `<span class="fixture-score">${formatScore(f.scoreA, f.scoreB, f.pensA, f.pensB)}</span>`
     : '<span class="fixture-vs">vs</span>';
   const personA = personForTeam(f.teamA);
   const personB = personForTeam(f.teamB);
@@ -2709,8 +2753,8 @@ function bkMatchHtml(codeA, codeB, fixData, isFinal, matchLabel) {
     return `<div class="bk-team-row ${cls}">${nameHtml}${scoreHtml}</div>`;
   }
 
-  const scoreA = hasScore ? fixData.scoreA : null;
-  const scoreB = hasScore ? fixData.scoreB : null;
+  const scoreA = hasScore ? (fixData.pensA != null ? `${fixData.scoreA}(${fixData.pensA})` : fixData.scoreA) : null;
+  const scoreB = hasScore ? (fixData.pensB != null ? `${fixData.scoreB}(${fixData.pensB})` : fixData.scoreB) : null;
 
   return `<div class="bk-match${isFinal?' bk-final':''}">
     ${headerHtml}
@@ -3243,8 +3287,8 @@ function buildKoEliminatedSet() {
     const rb = resolveSlotCode(f.teamB);
     if (!ra.resolved || !rb.resolved) continue;
     let loser = null;
-    if (f.scoreA > f.scoreB)       loser = ra.name;
-    else if (f.scoreB > f.scoreA)  loser = rb.name;
+    if (f.scoreA > f.scoreB)       loser = rb.name;
+    else if (f.scoreB > f.scoreA)  loser = ra.name;
     else if (f.pensA != null)      loser = f.pensA > f.pensB ? rb.name : ra.name;
     if (loser) eliminated.add(loser);
   }
@@ -4313,7 +4357,7 @@ function generateDailyWriteup() {
       const personA = personForTeam(nameA);
       const personB = personForTeam(nameB);
       const emoji = resultEmoji(f.scoreA, f.scoreB);
-      let line = `${emoji} ${flagA} ${nameA} ${f.scoreA} - ${f.scoreB} ${nameB} ${flagB}`;
+      let line = `${emoji} ${flagA} ${nameA} ${formatScore(f.scoreA, f.scoreB, f.pensA, f.pensB)} ${nameB} ${flagB}`;
       if (personA || personB) {
         line += `  (${personA||'unowned'} vs ${personB||'unowned'})`;
       }
