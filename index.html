@@ -1411,8 +1411,8 @@ async function fetchOpenFootballFixtures() {
         teamA: mapTeamName(m.team1),
         teamB: mapTeamName(m.team2),
         venue: m.ground,
-        scoreA: m.score ? m.score.ft[0] : null,
-        scoreB: m.score ? m.score.ft[1] : null,
+        scoreA: m.score ? (m.score.et || m.score.ft)[0] : null,
+        scoreB: m.score ? (m.score.et || m.score.ft)[1] : null,
         pensA: (m.score && m.score.p) ? m.score.p[0] : null,
         pensB: (m.score && m.score.p) ? m.score.p[1] : null,
       };
