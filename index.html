@@ -1456,28 +1456,49 @@ function resolveTeamCode(code) {
     const team = standings[m[2]]?.[parseInt(m[1])-1]?.team;
     return team ? { name: team, flag: getFlag(team), resolved:true } : { name: code, flag:'🏳️', resolved:false };
   }
-  if ((m = code.match(/^3([A-L\/]+)$/))) {
+  // 3rd place codes -- no slashes (already stripped by mapTeamName)
+  if ((m = code.match(/^3([A-L]+)$/))) {
+    const groups = m[1].split('');
+    const thirds = getBestThirdCache().filter(t => t.advancing && groups.includes(t.group));
+    if (thirds.length) return { name: thirds[0].team, flag: getFlag(thirds[0].team), resolved:true };
     const standings = buildLiveGroupStandings();
-    const candidates = m[1].split('/').map(g => standings[g]?.[2]).filter(Boolean);
+    const candidates = groups.map(g => standings[g]?.[2]).filter(Boolean);
     if (candidates.length) {
       candidates.sort((a,b) => (b.pts-a.pts) || ((b.gf-b.ga)-(a.gf-a.ga)));
       return { name: candidates[0].team, flag: getFlag(candidates[0].team), resolved:true };
     }
     return { name: code, flag:'🏳️', resolved:false };
   }
+  // W/L codes -- resolve by date-sorted position index (f.num is null in openfootball 2026)
   if ((m = code.match(/^W(\d+)$/))) {
-    const match = FIXTURES.find(f => f.num === parseInt(m[1]));
-    if (match && match.scoreA !== null) {
-      const winner = match.scoreA > match.scoreB ? match.teamA : match.teamB;
-      return { name: winner, flag: getFlag(winner), resolved:true };
+    const matchId = parseInt(m[1]);
+    const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
+    if (slotIdx >= 0) {
+      const fix = FIXTURES.filter(f => f.round === 'Round of 32')
+        .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b))[slotIdx];
+      if (fix && fix.scoreA !== null) {
+        let winner;
+        if (fix.scoreA > fix.scoreB)      winner = fix.teamA;
+        else if (fix.scoreB > fix.scoreA) winner = fix.teamB;
+        else if (fix.pensA != null)       winner = fix.pensA > fix.pensB ? fix.teamA : fix.teamB;
+        if (winner && TEAM_LOOKUP[winner]) return { name: winner, flag: getFlag(winner), resolved:true };
+      }
     }
     return { name: code, flag:'🏳️', resolved:false };
   }
   if ((m = code.match(/^L(\d+)$/))) {
-    const match = FIXTURES.find(f => f.num === parseInt(m[1]));
-    if (match && match.scoreA !== null) {
-      const loser = match.scoreA > match.scoreB ? match.teamB : match.teamA;
-      return { name: loser, flag: getFlag(loser), resolved:true };
+    const matchId = parseInt(m[1]);
+    const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
+    if (slotIdx >= 0) {
+      const fix = FIXTURES.filter(f => f.round === 'Round of 32')
+        .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b))[slotIdx];
+      if (fix && fix.scoreA !== null) {
+        let loser;
+        if (fix.scoreA > fix.scoreB)      loser = fix.teamB;
+        else if (fix.scoreB > fix.scoreA) loser = fix.teamA;
+        else if (fix.pensA != null)       loser = fix.pensA > fix.pensB ? fix.teamB : fix.teamA;
+        if (loser && TEAM_LOOKUP[loser]) return { name: loser, flag: getFlag(loser), resolved:true };
+      }
     }
     return { name: code, flag:'🏳️', resolved:false };
   }
