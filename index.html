@@ -1400,9 +1400,10 @@ async function fetchOpenFootballFixtures() {
     const res = await fetch(OPENFOOTBALL_URL + '?t=' + Math.floor(Date.now()/3600000), { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    FIXTURES = (data.matches || []).map(m => {
+    FIXTURES = (data.matches || []).map((m, idx) => {
       const conv = convertToMelbourne(m.date, m.time);
       return {
+        matchOrder: idx,
         round: m.round,
         num: m.num || null,
         date: conv.date,
@@ -1469,13 +1470,13 @@ function resolveTeamCode(code) {
     }
     return { name: code, flag:'🏳️', resolved:false };
   }
-  // W/L codes -- resolve by date-sorted position index (f.num is null in openfootball 2026)
+  // W/L codes -- resolve by original JSON order (matchOrder), not Melbourne-sorted
   if ((m = code.match(/^W(\d+)$/))) {
     const matchId = parseInt(m[1]);
     const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
     if (slotIdx >= 0) {
       const fix = FIXTURES.filter(f => f.round === 'Round of 32')
-        .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b))[slotIdx];
+        .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[slotIdx];
       if (fix && fix.scoreA !== null) {
         let winner;
         if (fix.scoreA > fix.scoreB)      winner = fix.teamA;
@@ -1491,7 +1492,7 @@ function resolveTeamCode(code) {
     const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
     if (slotIdx >= 0) {
       const fix = FIXTURES.filter(f => f.round === 'Round of 32')
-        .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b))[slotIdx];
+        .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[slotIdx];
       if (fix && fix.scoreA !== null) {
         let loser;
         if (fix.scoreA > fix.scoreB)      loser = fix.teamB;
@@ -2689,24 +2690,30 @@ function resolveSlotCode(code) {
     return { name: code, flag: '🏳️', resolved: false };
   }
 
-  // W73-W88: winner of R32 match by match id -- resolve via date-sorted position in R32_SLOTS
+  // W73-W88: winner of R32; W89-W96: winner of R16 -- resolved by matchOrder
   const mW = code.match(/^W(\d+)$/);
   if (mW) {
     const matchId = parseInt(mW[1]);
-    const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
-    if (slotIdx >= 0) {
-      const r32Fixtures = FIXTURES.filter(f => f.round === 'Round of 32')
-        .sort((a, b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
-      const fix = r32Fixtures[slotIdx];
-      if (fix && fix.scoreA !== null) {
-        const ra2 = resolveSlotCode(fix.teamA);
-        const rb2 = resolveSlotCode(fix.teamB);
-        let winner = null;
-        if (fix.scoreA > fix.scoreB) winner = ra2.name;
-        else if (fix.scoreB > fix.scoreA) winner = rb2.name;
-        else if (fix.pensA != null) winner = fix.pensA > fix.pensB ? ra2.name : rb2.name;
-        if (winner) return { name: winner, flag: getFlag(winner), person: personForTeam(winner), resolved: true };
+    let fix = null;
+    if (matchId >= 73 && matchId <= 88) {
+      const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
+      if (slotIdx >= 0) {
+        fix = FIXTURES.filter(f => f.round === 'Round of 32')
+          .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[slotIdx];
       }
+    } else if (matchId >= 89 && matchId <= 96) {
+      // R16 match numbers run sequentially 89-96 in JSON order
+      fix = FIXTURES.filter(f => f.round === 'Round of 16')
+        .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[matchId - 89];
+    }
+    if (fix && fix.scoreA !== null) {
+      const ra2 = resolveSlotCode(fix.teamA);
+      const rb2 = resolveSlotCode(fix.teamB);
+      let winner = null;
+      if (fix.scoreA > fix.scoreB) winner = ra2.name;
+      else if (fix.scoreB > fix.scoreA) winner = rb2.name;
+      else if (fix.pensA != null) winner = fix.pensA > fix.pensB ? ra2.name : rb2.name;
+      if (winner) return { name: winner, flag: getFlag(winner), person: personForTeam(winner), resolved: true };
     }
     return { name: code, flag: '🏳️', resolved: false };
   }
@@ -2787,7 +2794,7 @@ function bkMatchHtml(codeA, codeB, fixData, isFinal, matchLabel) {
 // Find the live fixture for a given KO round + positional index (0-based)
 function getKoFixture(roundName, idx) {
   return FIXTURES.filter(f => f.round === roundName)
-    .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b))[idx] || null;
+    .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[idx] || null;
 }
 
 // Render the full bracket
