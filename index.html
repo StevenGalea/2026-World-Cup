@@ -1525,6 +1525,29 @@ function isGroupComplete(groupLetter) {
   return matches.length > 0 && matches.every(f => f.scoreA !== null && f.scoreA !== undefined);
 }
 
+// Determine which bracket round tab should be shown by default, based on
+// tournament progress: the earliest round that isn't fully complete yet.
+function determineCurrentBracketRound() {
+  const groupLetters = [...new Set(ALL_TEAMS.filter(t => t.group && t.tier <= 4).map(t => t.group))];
+  const allGroupsComplete = groupLetters.length > 0 && groupLetters.every(g => isGroupComplete(g));
+  if (!allGroupsComplete) return 'groups';
+
+  const roundOrder = [
+    { key: 'R32',   name: 'Round of 32'    },
+    { key: 'R16',   name: 'Round of 16'    },
+    { key: 'QF',    name: 'Quarter-final'  },
+    { key: 'SF',    name: 'Semi-final'     },
+    { key: 'Final', name: 'Final'          },
+  ];
+  for (const r of roundOrder) {
+    const matches = FIXTURES.filter(f => f.round === r.name);
+    if (matches.length === 0) return r.key;
+    const allComplete = matches.every(f => f.scoreA !== null && f.scoreA !== undefined);
+    if (!allComplete) return r.key;
+  }
+  return 'Final';
+}
+
 function computeScoresFromFixtures() {
   const computed = {};
   ALL_TEAMS.forEach(t => {
@@ -1772,6 +1795,7 @@ async function fetchAndRender(showFeedback) {
     invalidateBestThirdCache();
     invalidateGroupStandingsCache();
     invalidateKoEliminatedCache();
+    bkMobileRound = determineCurrentBracketRound();
 
     // Show banner only on the leaderboard tab and only if scores changed
     const isLeaderboardActive = document.getElementById('panel-leaderboard')?.classList.contains('active');
@@ -2069,7 +2093,20 @@ function setFixtureView(mode) {
   document.getElementById('fixtures-bracket-view').style.display = bracketViewActive ? '' : 'none';
   document.getElementById('btnListView').classList.toggle('active',    !bracketViewActive);
   document.getElementById('btnBracketView').classList.toggle('active',  bracketViewActive);
-  if (bracketViewActive) renderBracket();
+  if (bracketViewActive) {
+    bkMobileRound = determineCurrentBracketRound();
+    renderBracket();
+    scrollBracketToCurrentRound();
+  }
+}
+
+function scrollBracketToCurrentRound() {
+  const roundKey = determineCurrentBracketRound();
+  const col = document.querySelector(`.bracket-col[data-round="${roundKey}"]`);
+  if (col) {
+    // Defer to next frame so layout has settled after innerHTML update
+    requestAnimationFrame(() => col.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' }));
+  }
 }
 
 // ── Annex C: 495 combinations of which 8 third-place groups advance.
@@ -2892,11 +2929,12 @@ function renderBracketDesktop() {
 
   const U = 64;
 
-  function colHtml(label, matchesHtml, isFinalCol) {
+  function colHtml(label, matchesHtml, isFinalCol, roundKey) {
     const labelHtml = isFinalCol
       ? `<div class="bracket-col-label">🏆 ${label}</div>`
       : `<div class="bracket-col-label">${label}</div>`;
-    return `<div class="bracket-col">${labelHtml}${matchesHtml}</div>`;
+    const roundAttr = roundKey ? ` data-round="${roundKey}"` : '';
+    return `<div class="bracket-col"${roundAttr}>${labelHtml}${matchesHtml}</div>`;
   }
 
   // Left group pods
@@ -2961,12 +2999,12 @@ function renderBracketDesktop() {
   const rightGroupsHtml = rightGroups.map(g => groupPodHtml(g)).join('');
 
   grid.innerHTML = [
-    colHtml('Groups A–F', leftGroupsHtml),
-    colHtml('Round of 32', leftR32Html),
-    colHtml('Round of 16', leftR16Html),
-    colHtml('Quarter-Finals', leftQFHtml),
-    colHtml('Semi-Finals', leftSFHtml),
-    colHtml('Final', centreHtml, true),
+    colHtml('Groups A–F', leftGroupsHtml, false, 'groups'),
+    colHtml('Round of 32', leftR32Html, false, 'R32'),
+    colHtml('Round of 16', leftR16Html, false, 'R16'),
+    colHtml('Quarter-Finals', leftQFHtml, false, 'QF'),
+    colHtml('Semi-Finals', leftSFHtml, false, 'SF'),
+    colHtml('Final', centreHtml, true, 'Final'),
     colHtml('Semi-Finals', rightSFHtml),
     colHtml('Quarter-Finals', rightQFHtml),
     colHtml('Round of 16', rightR16Html),
