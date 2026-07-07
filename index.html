@@ -1448,6 +1448,50 @@ function buildLiveGroupStandings() {
   return result;
 }
 
+// Single source of truth for resolving W(matchId) / L(matchId) codes across every
+// knockout round. openfootball references the PREVIOUS round's match number in each
+// unplayed fixture's team1/team2 field (e.g. an undecided QF shows "W93", an undecided
+// Final shows "W101"), so this covers 73 (start of R32) through 102 (end of SF).
+// Returns the raw team code string (e.g. "Argentina") or null if not yet decided.
+function resolveKoMatchNumber(matchId, wantLoser) {
+  let roundName, idx;
+  if (matchId >= 73 && matchId <= 88) {
+    roundName = 'Round of 32';
+    idx = R32_SLOTS.findIndex(s => s.id === matchId);
+  } else if (matchId >= 89 && matchId <= 96) {
+    roundName = 'Round of 16';
+    idx = matchId - 89;
+  } else if (matchId >= 97 && matchId <= 100) {
+    roundName = 'Quarter-final';
+    idx = matchId - 97;
+  } else if (matchId >= 101 && matchId <= 102) {
+    roundName = 'Semi-final';
+    idx = matchId - 101;
+  } else {
+    return null;
+  }
+  if (idx < 0) return null;
+  const fix = FIXTURES.filter(f => f.round === roundName)
+    .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[idx];
+  if (!fix || fix.scoreA === null || fix.scoreA === undefined) return null;
+
+  let winner = null, loser = null;
+  if (fix.scoreA > fix.scoreB)      { winner = fix.teamA; loser = fix.teamB; }
+  else if (fix.scoreB > fix.scoreA) { winner = fix.teamB; loser = fix.teamA; }
+  else if (fix.pensA != null)       {
+    if (fix.pensA > fix.pensB) { winner = fix.teamA; loser = fix.teamB; }
+    else                       { winner = fix.teamB; loser = fix.teamA; }
+  }
+  const raw = wantLoser ? loser : winner;
+  if (!raw) return null;
+
+  // The team field on the source fixture might itself still be an unresolved
+  // code (e.g. an R16 fixture whose team1 is "W74"), so resolve recursively.
+  if (TEAM_LOOKUP[raw]) return raw;
+  const nested = resolveSlotCode(raw);
+  return nested.resolved ? nested.name : null;
+}
+
 function resolveTeamCode(code) {
   if (!code) return { name: '?', flag: '🏳️', resolved:false };
   if (TEAM_LOOKUP[code]) return { name: code, flag: getFlag(code), resolved:true };
@@ -1470,38 +1514,14 @@ function resolveTeamCode(code) {
     }
     return { name: code, flag:'🏳️', resolved:false };
   }
-  // W/L codes -- resolve by original JSON order (matchOrder), not Melbourne-sorted
+  // W/L codes -- resolve winner/loser of the referenced match, any KO round
   if ((m = code.match(/^W(\d+)$/))) {
-    const matchId = parseInt(m[1]);
-    const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
-    if (slotIdx >= 0) {
-      const fix = FIXTURES.filter(f => f.round === 'Round of 32')
-        .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[slotIdx];
-      if (fix && fix.scoreA !== null) {
-        let winner;
-        if (fix.scoreA > fix.scoreB)      winner = fix.teamA;
-        else if (fix.scoreB > fix.scoreA) winner = fix.teamB;
-        else if (fix.pensA != null)       winner = fix.pensA > fix.pensB ? fix.teamA : fix.teamB;
-        if (winner && TEAM_LOOKUP[winner]) return { name: winner, flag: getFlag(winner), resolved:true };
-      }
-    }
-    return { name: code, flag:'🏳️', resolved:false };
+    const winner = resolveKoMatchNumber(parseInt(m[1]), false);
+    return winner ? { name: winner, flag: getFlag(winner), resolved:true } : { name: code, flag:'🏳️', resolved:false };
   }
   if ((m = code.match(/^L(\d+)$/))) {
-    const matchId = parseInt(m[1]);
-    const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
-    if (slotIdx >= 0) {
-      const fix = FIXTURES.filter(f => f.round === 'Round of 32')
-        .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[slotIdx];
-      if (fix && fix.scoreA !== null) {
-        let loser;
-        if (fix.scoreA > fix.scoreB)      loser = fix.teamB;
-        else if (fix.scoreB > fix.scoreA) loser = fix.teamA;
-        else if (fix.pensA != null)       loser = fix.pensA > fix.pensB ? fix.teamB : fix.teamA;
-        if (loser && TEAM_LOOKUP[loser]) return { name: loser, flag: getFlag(loser), resolved:true };
-      }
-    }
-    return { name: code, flag:'🏳️', resolved:false };
+    const loser = resolveKoMatchNumber(parseInt(m[1]), true);
+    return loser ? { name: loser, flag: getFlag(loser), resolved:true } : { name: code, flag:'🏳️', resolved:false };
   }
   return { name: code, flag:'🏳️', resolved:false };
 }
@@ -2727,22 +2747,29 @@ function resolveSlotCode(code) {
     return { name: code, flag: '🏳️', resolved: false };
   }
 
-  // W73-W88: winner of R32; W89-W96: winner of R16 -- resolved by matchOrder
+  // W(matchId) / L(matchId) -- winner or loser of any KO round, covers 73 through 102
   const mW = code.match(/^W(\d+)$/);
   if (mW) {
-    const matchId = parseInt(mW[1]);
-    let fix = null;
-    if (matchId >= 73 && matchId <= 88) {
-      const slotIdx = R32_SLOTS.findIndex(s => s.id === matchId);
-      if (slotIdx >= 0) {
-        fix = FIXTURES.filter(f => f.round === 'Round of 32')
-          .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[slotIdx];
-      }
-    } else if (matchId >= 89 && matchId <= 96) {
-      // R16 match numbers run sequentially 89-96 in JSON order
-      fix = FIXTURES.filter(f => f.round === 'Round of 16')
-        .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[matchId - 89];
-    }
+    const winner = resolveKoMatchNumber(parseInt(mW[1]), false);
+    if (winner) return { name: winner, flag: getFlag(winner), person: personForTeam(winner), resolved: true };
+    return { name: code, flag: '🏳️', resolved: false };
+  }
+  const mL = code.match(/^L(\d+)$/);
+  if (mL) {
+    const loser = resolveKoMatchNumber(parseInt(mL[1]), true);
+    if (loser) return { name: loser, flag: getFlag(loser), person: personForTeam(loser), resolved: true };
+    return { name: code, flag: '🏳️', resolved: false };
+  }
+
+  // W_r16_n / W_qf_n / W_sf_n -- our own internal bracket slot codes, used as a
+  // fallback label before openfootball populates a real match-number placeholder
+  const mRound = code.match(/^W_(r16|qf|sf)(\d+)$/);
+  if (mRound) {
+    const roundMap = { r16:'Round of 16', qf:'Quarter-final', sf:'Semi-final' };
+    const roundName = roundMap[mRound[1]];
+    const idx = parseInt(mRound[2]) - 1;
+    const fix = FIXTURES.filter(f => f.round === roundName)
+      .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0))[idx];
     if (fix && fix.scoreA !== null) {
       const ra2 = resolveSlotCode(fix.teamA);
       const rb2 = resolveSlotCode(fix.teamB);
@@ -2750,25 +2777,6 @@ function resolveSlotCode(code) {
       if (fix.scoreA > fix.scoreB) winner = ra2.name;
       else if (fix.scoreB > fix.scoreA) winner = rb2.name;
       else if (fix.pensA != null) winner = fix.pensA > fix.pensB ? ra2.name : rb2.name;
-      if (winner) return { name: winner, flag: getFlag(winner), person: personForTeam(winner), resolved: true };
-    }
-    return { name: code, flag: '🏳️', resolved: false };
-  }
-
-  // W_r16_n / W_qf_n / W_sf_n -- resolve from FIXTURES by round + position
-  const mRound = code.match(/^W_(r16|qf|sf)(\d+)$/);
-  if (mRound) {
-    const roundMap = { r16:'Round of 16', qf:'Quarter-final', sf:'Semi-final' };
-    const roundName = roundMap[mRound[1]];
-    const idx = parseInt(mRound[2]) - 1;
-    const roundFixes = FIXTURES.filter(f => f.round === roundName)
-      .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
-    const fix = roundFixes[idx];
-    if (fix && fix.scoreA !== null) {
-      const winner = fix.scoreA > fix.scoreB ? fix.teamA
-                   : fix.scoreB > fix.scoreA ? fix.teamB
-                   : fix.pensA != null ? (fix.pensA > fix.pensB ? fix.teamA : fix.teamB)
-                   : null;
       if (winner) return { name:winner, flag:getFlag(winner), person:personForTeam(winner), resolved:true };
     }
     return { name:code, flag:'🏳️', resolved:false };
@@ -3445,7 +3453,12 @@ function nextMatchForPerson(personName) {
   const teams = ALLOCATION[personName].map(t => t.name);
   const now = new Date();
   const upcoming = FIXTURES
-    .filter(f => (teams.includes(f.teamA) || teams.includes(f.teamB)) && parseFixtureDateTime(f) >= new Date(now.getTime() - 2*60*60*1000))
+    .filter(f => {
+      if (f.scoreA !== null && f.scoreA !== undefined) return false; // already played
+      const nameA = TEAM_LOOKUP[f.teamA] ? f.teamA : resolveTeamCode(f.teamA).name;
+      const nameB = TEAM_LOOKUP[f.teamB] ? f.teamB : resolveTeamCode(f.teamB).name;
+      return (teams.includes(nameA) || teams.includes(nameB)) && parseFixtureDateTime(f) >= new Date(now.getTime() - 2*60*60*1000);
+    })
     .sort((a,b) => parseFixtureDateTime(a) - parseFixtureDateTime(b));
   return upcoming[0] || null;
 }
@@ -3531,14 +3544,17 @@ function renderScorecards() {
     const nextMatch = nextMatchForPerson(person);
     const nextMatchHtml = nextMatch
       ? (() => {
-          const personA = personForTeam(nextMatch.teamA);
-          const personB = personForTeam(nextMatch.teamB);
+          const ra = TEAM_LOOKUP[nextMatch.teamA] ? { name: nextMatch.teamA } : resolveTeamCode(nextMatch.teamA);
+          const rb = TEAM_LOOKUP[nextMatch.teamB] ? { name: nextMatch.teamB } : resolveTeamCode(nextMatch.teamB);
+          const nameA = ra.name, nameB = rb.name;
+          const personA = personForTeam(nameA);
+          const personB = personForTeam(nameB);
           const vsLine = (personA || personB)
             ? `<span style="color:rgba(78,168,222,0.6);font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:0.5px;text-transform:uppercase;margin-left:8px">(${personA||'—'} vs ${personB||'—'})</span>`
             : '';
           return `<div class="next-match-widget">
             <span class="label">Next Match</span>
-            <span>${formatFixtureDate(nextMatch.date)}, ${nextMatch.time} — ${getFlag(nextMatch.teamA)} ${nextMatch.teamA} vs ${getFlag(nextMatch.teamB)} ${nextMatch.teamB} (${nextMatch.venue})${vsLine}</span>
+            <span>${formatFixtureDate(nextMatch.date)}, ${nextMatch.time} — ${getFlag(nameA)} ${nameA} vs ${getFlag(nameB)} ${nameB} (${nextMatch.venue})${vsLine}</span>
           </div>`;
         })()
       : `<div class="next-match-widget" style="opacity:0.5"><span class="label">Next Match</span><span>No upcoming fixtures for this person's teams</span></div>`;
