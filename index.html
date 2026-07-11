@@ -646,6 +646,7 @@
   /* POINTS GAP */
   .points-gap { font-size: 11px; color: rgba(249,245,232,0.4); margin-top: 4px; }
   .points-gap.leader { color: var(--gold); }
+  .points-ceiling { font-size: 11px; color: rgba(78,168,222,0.65); margin-top: 2px; }
 
   @media (max-width: 768px) {
     header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
@@ -1854,6 +1855,100 @@ function getScore(team, round) { return SCORES[team]?.[round] || 0; }
 function teamTotal(team)       { return ROUNDS.reduce((s,r) => s+getScore(team,r.key), 0); }
 function personTotal(person)   { return ALLOCATION[person].reduce((s,t) => s+teamTotal(t.name), 0); }
 
+// ============================================================
+// MAX POSSIBLE POINTS — theoretical ceiling assuming a team wins
+// every remaining match. Scoped to the knockout stage (Rd32 through
+// Final) since the group stage is complete for the remainder of this
+// tournament; group bonuses are already locked into each team's actual
+// score by this point. A team that's already been eliminated has a
+// ceiling equal to its current score (no further points achievable).
+//
+// Only one team can actually win the World Cup, so if a person owns
+// more than one team still alive, at most one of them is allowed to be
+// assumed champion in this calculation — the current favourite by odds
+// (live odds if available, draw-day odds otherwise, same source used
+// by the Win % simulation). Every other alive team owned by that same
+// person is capped at reaching the Final and losing it (runner-up, +4)
+// rather than winning it (+8), which is the realistic best case for a
+// team that isn't the one assumed to lift the trophy.
+// ============================================================
+function favouriteTeamForPerson(personName) {
+  const alive = ALLOCATION[personName].filter(t => !isEliminated(t.name));
+  if (alive.length === 0) return null;
+  return alive.reduce((best, t) => {
+    if (!best) return t;
+    const tOdds = currentOdds(t.name), bestOdds = currentOdds(best.name);
+    if (tOdds < bestOdds) return t;
+    if (tOdds === bestOdds && t.name < best.name) return t; // deterministic tie-break
+    return best;
+  }, null);
+}
+
+function maxRemainingPointsForTeam(teamName, isFavourite) {
+  if (isEliminated(teamName)) return 0;
+  const koRoundsBeforeFinal = ['Rd32','Rd16','QF','SF'];
+  let remaining = 0;
+  koRoundsBeforeFinal.forEach(r => { if (getScore(teamName, r) === 0) remaining += 3; });
+
+  const finalAlreadyDecided = getScore(teamName, 'Final') > 0; // already won the real Final
+  if (finalAlreadyDecided) return remaining; // nothing more to add, already realised
+
+  if (isFavourite) {
+    remaining += 3 + 8; // win the Final (3) + tournament winner bonus (8)
+  } else {
+    remaining += 4; // reach the Final but lose it -- runner-up bonus (4), no match-win points
+  }
+  return remaining;
+}
+function maxTotalForTeam(teamName, isFavourite) {
+  return teamTotal(teamName) + maxRemainingPointsForTeam(teamName, isFavourite);
+}
+
+function maxTotalForPerson(personName) {
+  const teams = ALLOCATION[personName].map(t => t.name);
+  const favourite = favouriteTeamForPerson(personName);
+  let total = teams.reduce((s,t) => s + maxTotalForTeam(t, favourite && t === favourite.name), 0);
+
+  // Same-owner clash adjustment: if two of a person's own teams are drawn
+  // against each other in an upcoming match, only one of them can actually
+  // advance past it, so a naive sum of both teams' ceilings would double
+  // count a match outcome that isn't achievable.
+  FIXTURES.forEach(f => {
+    if (f.scoreA !== null && f.scoreA !== undefined) return; // already decided, no adjustment needed
+    const ra = resolveSlotCode(f.teamA), rb = resolveSlotCode(f.teamB);
+    if (!ra.resolved || !rb.resolved) return;
+    if (!teams.includes(ra.name) || !teams.includes(rb.name)) return; // not a same-owner clash
+    const remA = maxRemainingPointsForTeam(ra.name, favourite && ra.name === favourite.name);
+    const remB = maxRemainingPointsForTeam(rb.name, favourite && rb.name === favourite.name);
+    total -= Math.min(remA, remB);
+  });
+  return total;
+}
+function personHasSameOwnerClash(personName) {
+  const teams = ALLOCATION[personName].map(t => t.name);
+  return FIXTURES.some(f => {
+    if (f.scoreA !== null && f.scoreA !== undefined) return false;
+    const ra = resolveSlotCode(f.teamA), rb = resolveSlotCode(f.teamB);
+    return ra.resolved && rb.resolved && teams.includes(ra.name) && teams.includes(rb.name);
+  });
+}
+
+// Plain-language path to a team's max score, e.g. "wins SF (+3), Final (+3; +8 bonus)".
+// Returns null for an eliminated team (no remaining path) or one already at its max.
+const KO_ROUND_LABEL = { Rd32:'R32', Rd16:'R16', QF:'QF', SF:'SF' };
+function maxPointsPathForTeam(teamName, isFavourite) {
+  if (isEliminated(teamName)) return null;
+  const steps = [];
+  ['Rd32','Rd16','QF','SF'].forEach(r => {
+    if (getScore(teamName, r) === 0) steps.push(`${KO_ROUND_LABEL[r]} (+3)`);
+  });
+  if (getScore(teamName, 'Final') > 0) {
+    return steps.length ? `wins ${steps.join(', ')}` : null; // already won it all, nothing left
+  }
+  steps.push(isFavourite ? 'Final (+3; +8 bonus)' : 'reaches Final but loses it (+4 bonus)');
+  return `wins ${steps.join(', ')}`;
+}
+
 // A round is "pending" for a team if its fixture is scheduled (exists
 // in the live data) but hasn't been played yet — distinct from a
 // round that simply doesn't exist for that team (e.g. future KO
@@ -2106,6 +2201,24 @@ function renderFilteredFixtures() {
 // ============================================================
 let bracketViewActive = false;
 let bkMobileRound = 'R32';
+let savedScorecardsScrollY = 0;
+
+// Continuously track scroll position while the Scorecards tab is active, so
+// switching away and back via the nav bar restores exactly where the person
+// left off, rather than resetting to the top like every other tab does.
+(function() {
+  let ticking = false;
+  function trackScroll() {
+    const activePanel = document.querySelector('.panel.active');
+    if (activePanel && activePanel.id === 'panel-scorecards') {
+      savedScorecardsScrollY = window.scrollY;
+    }
+    ticking = false;
+  }
+  window.addEventListener('scroll', () => {
+    if (!ticking) { requestAnimationFrame(trackScroll); ticking = true; }
+  });
+})();
 
 function setFixtureView(mode) {
   bracketViewActive = (mode === 'bracket');
@@ -3496,6 +3609,10 @@ function renderLeaderboard() {
       ? (standings.length>1 ? `<div class="points-gap leader">+${p.total - (standings[1]?.total||0)} ahead of 2nd</div>` : '')
       : `<div class="points-gap">${leaderTotal - p.total} pts behind 1st</div>`;
     const allOut = teams.every(t => isEliminated(t.name));
+    const ceiling = maxTotalForPerson(p.name);
+    const ceilingHtml = (!allOut && ceiling > p.total)
+      ? `<div class="points-ceiling">Max Score Possible: ${ceiling} pts${personHasSameOwnerClash(p.name) ? '*' : ''}</div>`
+      : '';
     return `<div class="lb-card ${rank<=3?'rank-'+rank:''}" onclick="navigateToScorecard('${p.name}')" style="cursor:pointer">
       <div class="rank-bg">${rank}</div>
       <div class="lb-name">${medals[i]||''} ${p.name} ${moveIndicator}</div>
@@ -3503,6 +3620,7 @@ function renderLeaderboard() {
       <div class="lb-teams">${chips}</div>
       ${breakdown?`<div class="lb-breakdown">${breakdown}</div>`:''}
       ${gap}
+      ${ceilingHtml}
       ${allOut?'<div style="margin-top:4px;font-size:10px;color:#e84040;font-family:\'Oswald\',sans-serif;letter-spacing:1px">ALL TEAMS ELIMINATED — FINAL SCORE LOCKED</div>':''}
       <div style="margin-top:8px;font-size:10px;color:rgba(249,245,232,0.28);letter-spacing:0.5px">TAP FOR SCORECARD →</div>
     </div>`;
@@ -3521,6 +3639,7 @@ function renderScorecards() {
   document.getElementById('scorecardsContainer').innerHTML = PARTICIPANTS.map(person => {
     const teams = ALLOCATION[person];
     const pTotal = personTotal(person);
+    const personFavourite = favouriteTeamForPerson(person);
     const hdrs = ROUNDS.map(r => {
       const cls = r.type==='group'?'group-col':r.type==='ko'?'ko-col':r.type==='bonus'?'bonus-col':'';
       return `<th class="${cls}">${r.label}</th>`;
@@ -3531,16 +3650,21 @@ function renderScorecards() {
         const pending = pts === 0 && isRoundPending(team.name, r.key);
         return `<td class="pts-cell ${pts>0?'has-pts':pending?'pending':'zero'}">${pts>0?pts:pending?'⏳':'–'}</td>`;
       }).join('');
+      const isFav = personFavourite && team.name === personFavourite.name;
+      const teamMax = maxTotalForTeam(team.name, isFav);
       return `<tr>
-        <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${team.name}')"><span class="tier-badge tier-${team.tier}"></span>${getFlag(team.name)} ${team.name} <small style="color:rgba(249,245,232,0.28)">${team.group}</small>${isEliminated(team.name) ? '<span class="eliminated-badge">OUT</span>' : ''}</td>
+        <td class="team-clickable" onclick="filterFixturesByTeamAndNavigate('${team.name}')"><span class="tier-badge tier-${team.tier}"></span>${getFlag(team.name)} ${team.name} <small style="color:rgba(249,245,232,0.28)">${team.group}</small>${isEliminated(team.name) ? '<span class="eliminated-badge">OUT</span>' : ''}${isFav ? '<span title="Assumed tournament favourite for max points" style="color:var(--gold);margin-left:4px;font-size:11px">★</span>' : ''}</td>
         ${cells}
         <td class="pts-cell" style="color:#c97ae8">${teamTotal(team.name)||'–'}</td>
+        <td class="pts-cell" style="color:rgba(78,168,222,0.75)">${teamMax||'–'}</td>
       </tr>`;
     }).join('');
     const totalCells = ROUNDS.map(r => {
       const pts = teams.reduce((s,t)=>s+getScore(t.name,r.key),0);
       return `<td class="pts-cell">${pts>0?pts:'–'}</td>`;
     }).join('');
+    const pMax = maxTotalForPerson(person);
+    const clash = personHasSameOwnerClash(person);
     const nextMatch = nextMatchForPerson(person);
     const nextMatchHtml = nextMatch
       ? (() => {
@@ -3566,13 +3690,34 @@ function renderScorecards() {
       ${nextMatchHtml}
       <div class="table-wrap">
         <table class="scorecard">
-          <thead><tr><th>Team / Group</th>${hdrs}<th class="total-col">Total</th></tr></thead>
+          <thead><tr><th>Team / Group</th>${hdrs}<th class="total-col">Total</th><th class="total-col" style="color:rgba(78,168,222,0.9)">Max</th></tr></thead>
           <tbody>
             ${rows}
-            <tr class="total-row"><td>Round Total</td>${totalCells}<td>${pTotal}</td></tr>
+            <tr class="total-row"><td>Round Total</td>${totalCells}<td>${pTotal}</td><td style="color:rgba(78,168,222,0.9)">${pMax}</td></tr>
           </tbody>
         </table>
       </div>
+      ${(() => {
+        const paths = teams
+          .map(t => {
+            const isFav = personFavourite && t.name === personFavourite.name;
+            const path = maxPointsPathForTeam(t.name, isFav);
+            return path ? `${getFlag(t.name)} <b style="color:rgba(249,245,232,0.75)">${t.name}</b> ${path}` : null;
+          })
+          .filter(Boolean);
+        if (paths.length === 0) return '';
+        return `<div style="font-size:11px;color:rgba(249,245,232,0.45);margin-top:10px;line-height:1.7">
+          <span style="color:rgba(78,168,222,0.9);font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:0.5px;text-transform:uppercase">Path to max</span><br>
+          ${paths.join('<br>')}
+        </div>`;
+      })()}
+      ${(() => {
+        const aliveCount = teams.filter(t => !isEliminated(t.name)).length;
+        if (aliveCount < 2) return '';
+        const favNote = `★ ${personFavourite ? personFavourite.name : ''} is assumed the tournament favourite (lowest odds) for Max — only one team can actually win it all, so your other alive team${aliveCount>2?'s are':' is'} capped at reaching the Final and losing it (runner-up) rather than winning it.`;
+        const clashNote = clash ? ' Two of your teams also face each other in an upcoming match, so only one of them can advance past it either way.' : '';
+        return `<div style="font-size:10px;color:rgba(249,245,232,0.35);margin-top:6px">${favNote}${clashNote}</div>`;
+      })()}
     </div>`;
   }).join('');
 }
@@ -3700,9 +3845,14 @@ function navigateToScorecard(personName) {
 }
 
 function showTab(btnOrTabName) {
+  const tab = typeof btnOrTabName === 'string' ? btnOrTabName : btnOrTabName.dataset.tab;
+  if (tab === 'scorecards') {
+    // Restored below, after the panel switch and render have completed
+  } else {
+    window.scrollTo(0, 0);
+  }
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  const tab = typeof btnOrTabName === 'string' ? btnOrTabName : btnOrTabName.dataset.tab;
   const panel = document.getElementById('panel-'+tab);
   if (!panel) return;
   panel.classList.add('active');
@@ -3714,6 +3864,11 @@ function showTab(btnOrTabName) {
   if (tab==='impact') { populateImpactMatchSelect(); renderImpactScenarios(); }
   if (tab==='h2h') { populateH2HSelects(); renderH2H(); }
   if (tab==='writeup') { generateDailyWriteup(); }
+  if (tab==='scorecards') {
+    // Defer to next frame so the table has rendered and the page has its
+    // full height before restoring scroll position
+    requestAnimationFrame(() => window.scrollTo(0, savedScorecardsScrollY));
+  }
 }
 
 // Hidden route: visiting #daily-writeup jumps straight to the writeup
