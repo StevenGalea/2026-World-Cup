@@ -341,17 +341,6 @@
   .setup-step strong { color: var(--cream); display: block; margin-bottom: 3px; }
   .setup-step p { font-size: 12px; color: rgba(249,245,232,0.55); line-height: 1.6; }
   .setup-step a { color: var(--gold); }
-  .code-snippet {
-    background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 4px; padding: 7px 11px;
-    font-family: monospace; font-size: 11px; color: #a8d8a8;
-    margin-top: 5px; word-break: break-all; line-height: 1.5;
-  }
-  .connected-note {
-    background: rgba(62,207,106,0.1); border: 1px solid rgba(62,207,106,0.25);
-    border-radius: 5px; padding: 10px 14px;
-    font-size: 12px; color: #3ecf6a; margin-bottom: 16px;
-  }
 
   .section-label {
     font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600;
@@ -762,6 +751,7 @@
   .impact-delta.up   { color: #3ecf6a; }
   .impact-delta.down { color: #e84040; }
   .impact-delta.same { color: rgba(249,245,232,0.25); }
+  .impact-pts-gained { font-size: 10px; font-family: 'Oswald', sans-serif; color: rgba(78,168,222,0.9); margin-left: 6px; }
   .impact-no-match {
     text-align: center; padding: 32px;
     color: rgba(249,245,232,0.35); font-size: 13px;
@@ -877,36 +867,9 @@
   @media (max-width: 768px) {
     #backToTopBtn { bottom: 18px; right: 14px; width: 38px; height: 38px; font-size: 16px; }
   }
-
-  /* ── DAILY RECAP (hidden tab, accessed via #recap) ── */
-  .recap-toolbar {
-    display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap;
-  }
-  .recap-date-select {
-    background: var(--pitch); color: var(--cream);
-    border: 1px solid rgba(245,200,66,0.3); border-radius: 4px;
-    padding: 9px 12px; font-size: 13px; font-family: 'Inter', sans-serif; cursor: pointer;
-  }
-  .recap-copy-btn {
-    background: var(--gold); color: #0d1f15;
-    border: none; border-radius: 4px; padding: 9px 18px;
-    font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px;
-    letter-spacing: 0.5px; cursor: pointer; transition: opacity 0.15s;
-  }
-  .recap-copy-btn:hover { opacity: 0.85; }
-  .recap-copy-btn.copied { background: #3ecf6a; }
-  .recap-output {
-    background: var(--pitch); border: 1px solid rgba(245,200,66,0.15);
-    border-radius: 8px; padding: 18px 20px;
-    font-family: 'Inter', monospace, monospace;
-    font-size: 12.5px; line-height: 1.7; white-space: pre-wrap;
-    color: rgba(249,245,232,0.88); max-height: 70vh; overflow-y: auto;
-  }
-  .recap-empty {
-    text-align: center; padding: 36px; color: rgba(249,245,232,0.3); font-size: 13px;
-  }
 </style>
 </head>
+
 <body>
 <button id="backToTopBtn" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
 
@@ -1426,29 +1389,6 @@ async function fetchOpenFootballFixtures() {
 }
 
 // ── Resolve knockout placeholder codes (1A, 2B, 3A/B/C/D/F, W74, L101) ──
-function buildLiveGroupStandings() {
-  const groups = {};
-  FIXTURES.forEach(f => {
-    if (!f.group) return;
-    if (!groups[f.group]) groups[f.group] = {};
-    [f.teamA, f.teamB].forEach(t => {
-      if (!groups[f.group][t]) groups[f.group][t] = { team:t, pts:0, gf:0, ga:0 };
-    });
-    if (f.scoreA === null) return;
-    const a = groups[f.group][f.teamA], b = groups[f.group][f.teamB];
-    a.gf += f.scoreA; a.ga += f.scoreB;
-    b.gf += f.scoreB; b.ga += f.scoreA;
-    if (f.scoreA > f.scoreB) a.pts += 3;
-    else if (f.scoreA < f.scoreB) b.pts += 3;
-    else { a.pts += 1; b.pts += 1; }
-  });
-  const result = {};
-  Object.keys(groups).forEach(g => {
-    result[g] = Object.values(groups[g]).sort((x,y) => (y.pts-x.pts) || ((y.gf-y.ga)-(x.gf-x.ga)));
-  });
-  return result;
-}
-
 // Single source of truth for resolving W(matchId) / L(matchId) codes across every
 // knockout round. openfootball references the PREVIOUS round's match number in each
 // unplayed fixture's team1/team2 field (e.g. an undecided QF shows "W93", an undecided
@@ -1498,7 +1438,7 @@ function resolveTeamCode(code) {
   if (TEAM_LOOKUP[code]) return { name: code, flag: getFlag(code), resolved:true };
   let m;
   if ((m = code.match(/^([12])([A-L])$/))) {
-    const standings = buildLiveGroupStandings();
+    const standings = buildGroupStandingsDetailed();
     const team = standings[m[2]]?.[parseInt(m[1])-1]?.team;
     return team ? { name: team, flag: getFlag(team), resolved:true } : { name: code, flag:'🏳️', resolved:false };
   }
@@ -1507,10 +1447,10 @@ function resolveTeamCode(code) {
     const groups = m[1].split('');
     const thirds = getBestThirdCache().filter(t => t.advancing && groups.includes(t.group));
     if (thirds.length) return { name: thirds[0].team, flag: getFlag(thirds[0].team), resolved:true };
-    const standings = buildLiveGroupStandings();
+    const standings = buildGroupStandingsDetailed();
     const candidates = groups.map(g => standings[g]?.[2]).filter(Boolean);
     if (candidates.length) {
-      candidates.sort((a,b) => (b.pts-a.pts) || ((b.gf-b.ga)-(a.gf-a.ga)));
+      candidates.sort((a,b) => (b.pts-a.pts) || (b.gd-a.gd) || (b.gf-a.gf));
       return { name: candidates[0].team, flag: getFlag(candidates[0].team), resolved:true };
     }
     return { name: code, flag:'🏳️', resolved:false };
@@ -4202,7 +4142,10 @@ function populateImpactMatchSelect() {
   matches.forEach((f, i) => {
     const ra = resolveTeamCode(f.teamA);
     const rb = resolveTeamCode(f.teamB);
-    const label = `${formatFixtureDate(f.date)} ${f.time} — ${getFlag(ra.name)} ${ra.name} vs ${getFlag(rb.name)} ${rb.name}`;
+    const personA = personForTeam(ra.name);
+    const personB = personForTeam(rb.name);
+    const vsLabel = (personA || personB) ? ` (${personA || '—'} vs ${personB || '—'})` : '';
+    const label = `${formatFixtureDate(f.date)} ${f.time} — ${getFlag(ra.name)} ${ra.name} vs ${getFlag(rb.name)} ${rb.name}${vsLabel}`;
     const opt = document.createElement('option');
     opt.value = i;
     opt.textContent = label;
@@ -4210,7 +4153,7 @@ function populateImpactMatchSelect() {
   });
 }
 
-function computeHypotheticalLeaderboard(teamA, teamB, outcome) {
+function computeHypotheticalLeaderboard(teamA, teamB, outcome, roundName) {
   // outcome: 'winA' | 'draw' | 'winB'
   // Returns [{name, pts}] sorted desc
   const hypotheticalScores = {};
@@ -4218,23 +4161,21 @@ function computeHypotheticalLeaderboard(teamA, teamB, outcome) {
     hypotheticalScores[t.name] = teamTotal(t.name);
   });
 
-  // Apply the hypothetical match result on top of current scores
-  const isKO = !FIXTURES.some(f =>
-    f.group && (f.teamA === teamA || f.teamB === teamA)
-  ) || false;
+  // Match points (3/1/0) apply to every round. Bonus points only apply where
+  // this specific match determines a bonus outcome: the Final decides the
+  // tournament winner (+8) and runner-up (+4) bonuses, and the 3rd place
+  // match decides the +2 bonus for whoever wins it. Every other knockout
+  // round (Rd32 through SF) is match points only, no separate bonus.
+  const isFinal = roundName === 'Final';
+  const isThird = roundName === 'Match for third place';
 
-  // For group stage: 3/1/0 points added to whichever team's sweep-scorecard round
-  // We don't care exactly which GS slot — we just want the leaderboard delta.
-  if (outcome === 'winA') {
-    hypotheticalScores[teamA] += 3;
-    hypotheticalScores[teamB] += 0;
-  } else if (outcome === 'draw') {
-    hypotheticalScores[teamA] += 1;
-    hypotheticalScores[teamB] += 1;
-  } else {
-    hypotheticalScores[teamA] += 0;
-    hypotheticalScores[teamB] += 3;
-  }
+  function applyWin(team)  { hypotheticalScores[team] += isFinal ? 3+8 : isThird ? 3+2 : 3; }
+  function applyLoss(team) { if (isFinal) hypotheticalScores[team] += 4; } // runner-up bonus despite losing
+  function applyDraw(team) { hypotheticalScores[team] += 1; }
+
+  if (outcome === 'winA') { applyWin(teamA); applyLoss(teamB); }
+  else if (outcome === 'draw') { applyDraw(teamA); applyDraw(teamB); }
+  else { applyLoss(teamA); applyWin(teamB); }
 
   return PARTICIPANTS.map(p => ({
     name: p,
@@ -4279,7 +4220,7 @@ function renderImpactScenarios() {
   const html = `
     <div class="impact-results-grid">
       ${scenarios.map(sc => {
-        const board = computeHypotheticalLeaderboard(teamA, teamB, sc.key);
+        const board = computeHypotheticalLeaderboard(teamA, teamB, sc.key, f.round);
         const rows = board.map((p, i) => {
           const rank = i+1;
           const curr = currentRankMap[p.name];
@@ -4289,10 +4230,15 @@ function renderImpactScenarios() {
             : delta < 0
             ? `<span class="impact-delta down">▼${Math.abs(delta)}</span>`
             : `<span class="impact-delta same">–</span>`;
+          const ptsGained = p.pts - currentStandings.find(c => c.name === p.name).pts;
+          const ptsGainedHtml = ptsGained > 0
+            ? `<span class="impact-pts-gained">+${ptsGained}</span>`
+            : '';
           return `<div class="impact-row">
             <span class="impact-rank">${rank}</span>
             <span class="impact-person">${p.name}</span>
             <span class="impact-pts">${p.pts}<span style="font-size:10px;font-weight:400;color:rgba(249,245,232,0.35)">pts</span></span>
+            ${ptsGainedHtml}
             ${deltaHtml}
           </div>`;
         }).join('');
@@ -4303,7 +4249,7 @@ function renderImpactScenarios() {
       }).join('')}
     </div>
     <div style="font-size:11px;color:rgba(249,245,232,0.3)">
-      Rank change arrows show movement vs current standings. Points shown include this hypothetical result added to each participant's total.
+      Rank change arrows show movement vs current standings. <span style="color:rgba(78,168,222,0.9)">+N</span> shows points gained under this result, including any bonus (tournament winner, runner-up, or 3rd place) where the selected match decides one.
     </div>
   `;
   container.innerHTML = html;
