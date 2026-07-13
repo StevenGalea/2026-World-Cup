@@ -757,6 +757,67 @@
     color: rgba(249,245,232,0.35); font-size: 13px;
   }
 
+  /* ── PREDICT BRACKET (Impact tab, second mode) ── */
+  .pk-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .pk-reset-btn {
+    background: rgba(232,64,64,0.1); color: #e84040; border: 1px solid rgba(232,64,64,0.3);
+    border-radius: 4px; padding: 7px 14px; font-family: 'Oswald', sans-serif; font-size: 11px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer;
+  }
+  .pk-reset-btn:hover { background: rgba(232,64,64,0.18); }
+  .pk-rounds { display: flex; flex-direction: column; gap: 22px; }
+  .pk-round-label {
+    font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600; color: var(--gold);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
+  }
+  .pk-round-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .pk-slot {
+    background: var(--pitch); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden;
+  }
+  .pk-slot.pk-decided { border-color: rgba(245,200,66,0.35); }
+  .pk-slot-header {
+    display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 9px;
+    color: rgba(249,245,232,0.35); font-family: 'Oswald', sans-serif; letter-spacing: 0.5px;
+  }
+  .pk-slot-header .pk-slot-tag { color: var(--gold); }
+  .pk-pick-row {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;
+    background: transparent; border-left: none; border-right: none; border-top: none;
+    width: 100%; text-align: left; color: var(--cream); font-family: 'Inter', sans-serif;
+    transition: background 0.12s;
+  }
+  .pk-pick-row:last-of-type { border-bottom: none; }
+  .pk-pick-row:hover { background: rgba(245,200,66,0.08); }
+  .pk-pick-row.picked { background: rgba(62,207,106,0.12); }
+  .pk-pick-row.not-picked { opacity: 0.4; }
+  .pk-pick-row .pk-flag { font-size: 14px; flex-shrink: 0; }
+  .pk-pick-row .pk-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .pk-pick-row .pk-owner { font-size: 9px; color: var(--gold); opacity: 0.7; font-family: 'Oswald', sans-serif; white-space: nowrap; }
+  .pk-pick-row .pk-check { font-size: 12px; color: #3ecf6a; width: 14px; flex-shrink: 0; text-align: center; }
+  .pk-empty {
+    text-align: center; padding: 28px; color: rgba(249,245,232,0.3); font-size: 12px; line-height: 1.6;
+  }
+  .pk-summary { margin-top: 26px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.08); }
+  .pk-summary-label {
+    font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: var(--gold);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;
+  }
+  .pk-summary-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 10px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .pk-summary-row:last-child { border-bottom: none; }
+  .pk-summary-row.leader { background: rgba(245,200,66,0.06); border-radius: 4px; }
+  .pk-summary-rank { font-family: 'Oswald', sans-serif; font-size: 11px; color: rgba(249,245,232,0.35); min-width: 22px; }
+  .pk-summary-person { flex: 1; }
+  .pk-summary-pts { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700; color: var(--gold); }
+  .pk-summary-delta { font-size: 10px; font-family: 'Oswald', sans-serif; margin-left: 6px; }
+  .pk-summary-delta.up   { color: #3ecf6a; }
+  .pk-summary-delta.down { color: #e84040; }
+  .pk-summary-delta.same { color: rgba(249,245,232,0.25); }
+
   /* ── HEAD TO HEAD ── */
   .h2h-select-row {
     display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 20px;
@@ -1164,11 +1225,31 @@
 <!-- MATCH IMPACT -->
 <div id="panel-impact" class="panel">
   <p class="section-label">⚡ Match Impact Engine</p>
-  <p class="impact-intro">Select an upcoming match to see how each possible result would shift the sweep leaderboard.</p>
-  <select class="impact-match-select" id="impactMatchSelect" onchange="renderImpactScenarios()">
-    <option value="">Select a match…</option>
-  </select>
-  <div id="impactResults"></div>
+  <div class="view-toggle">
+    <button class="view-toggle-btn active" id="btnImpactSingle" onclick="setImpactView('single')">🎯 Single Match</button>
+    <button class="view-toggle-btn"        id="btnImpactPredict" onclick="setImpactView('predict')">🏆 Predict Bracket</button>
+  </div>
+
+  <div id="impact-single-view">
+    <p class="impact-intro">Select an upcoming match to see how each possible result would shift the sweep leaderboard.</p>
+    <select class="impact-match-select" id="impactMatchSelect" onchange="renderImpactScenarios()">
+      <option value="">Select a match…</option>
+    </select>
+    <div id="impactResults"></div>
+  </div>
+
+  <div id="impact-predict-view" style="display:none">
+    <p class="impact-intro">Pick a winner for every remaining knockout match to simulate the rest of the tournament. Pick a Semi-Final and the Final / 3rd Place cards populate automatically — change an earlier pick and anything downstream clears itself.</p>
+    <div class="pk-toolbar">
+      <span style="font-size:11px;color:rgba(249,245,232,0.35)" id="pkPickCount"></span>
+      <button class="pk-reset-btn" onclick="resetPredictions()">↺ Reset Predictions</button>
+    </div>
+    <div id="pkRounds" class="pk-rounds"></div>
+    <div id="pkSummary" class="pk-summary" style="display:none">
+      <div class="pk-summary-label">Predicted Final Leaderboard</div>
+      <div id="pkSummaryRows"></div>
+    </div>
+  </div>
 </div>
 
 <!-- HEAD TO HEAD -->
@@ -3801,7 +3882,10 @@ function showTab(btnOrTabName) {
   if (tab==='fixtures') { renderFixturesTab(); }
   if (tab==='leaderboard') { renderGroupStandings(); renderBestThirdPlace(); }
   if (tab==='probability') { runProbabilitySimulation(); }
-  if (tab==='impact') { populateImpactMatchSelect(); renderImpactScenarios(); }
+  if (tab==='impact') {
+    populateImpactMatchSelect(); renderImpactScenarios();
+    if (impactViewMode === 'predict') renderPredictBracket();
+  }
   if (tab==='h2h') { populateH2HSelects(); renderH2H(); }
   if (tab==='writeup') { generateDailyWriteup(); }
   if (tab==='scorecards') {
@@ -4253,6 +4337,247 @@ function renderImpactScenarios() {
     </div>
   `;
   container.innerHTML = html;
+}
+
+
+// ============================================================
+// PREDICT BRACKET — generic multi-match knockout simulator
+// ============================================================
+// Reuses the exact same fixture team-code fields (W74, L101, 2A, 3ABCDF...)
+// that every other resolver in the app already parses, rather than the
+// hand-built R32_SLOTS/R16_SLOTS/QF_SLOTS bracket-layout arrays (those exist
+// purely for visual bracket geometry). That keeps this feature correct for
+// whatever knockout matches are currently undecided — 4 remaining now
+// (SF x2, Final, 3rd) or a full R32-onward tree in a future tournament —
+// without duplicating the fragile W/L match-number resolution logic.
+
+let impactViewMode = 'single';
+// predictions: { [slotId]: { winner, loser, isFinal, isThird } }
+// slotId is the numeric openfootball match id (73-102) for Rd32-SF, or the
+// strings 'third' / 'final' for the last two fixtures.
+let bracketPredictions = {};
+
+const PK_KO_ROUND_SEQUENCE = [
+  { name:'Round of 32',   startId:73  },
+  { name:'Round of 16',   startId:89  },
+  { name:'Quarter-final', startId:97  },
+  { name:'Semi-final',    startId:101 },
+];
+
+function setImpactView(mode) {
+  impactViewMode = mode;
+  const predictMode = mode === 'predict';
+  document.getElementById('impact-single-view').style.display   = predictMode ? 'none' : '';
+  document.getElementById('impact-predict-view').style.display  = predictMode ? '' : 'none';
+  document.getElementById('btnImpactSingle').classList.toggle('active', !predictMode);
+  document.getElementById('btnImpactPredict').classList.toggle('active', predictMode);
+  if (predictMode) renderPredictBracket();
+}
+
+// Every currently-undecided KO fixture, tagged with its match id + label.
+// Order follows tournament progression (Rd32 → Rd16 → QF → SF → 3rd → Final).
+function getPredictionSlots() {
+  const slots = [];
+  PK_KO_ROUND_SEQUENCE.forEach(rd => {
+    const fixtures = FIXTURES.filter(f => f.round === rd.name)
+      .sort((a,b) => (a.matchOrder||0) - (b.matchOrder||0));
+    fixtures.forEach((f, i) => {
+      if (f.scoreA !== null && f.scoreA !== undefined) return; // already played — real result stands
+      slots.push({ id: rd.startId + i, roundName: rd.name, fixture: f, isFinal:false, isThird:false });
+    });
+  });
+  const thirdFix = getKoFixture('Match for third place', 0);
+  if (thirdFix && (thirdFix.scoreA === null || thirdFix.scoreA === undefined)) {
+    slots.push({ id:'third', roundName:'Match for third place', fixture: thirdFix, isFinal:false, isThird:true });
+  }
+  const finalFix = getKoFixture('Final', 0);
+  if (finalFix && (finalFix.scoreA === null || finalFix.scoreA === undefined)) {
+    slots.push({ id:'final', roundName:'Final', fixture: finalFix, isFinal:true, isThird:false });
+  }
+  return slots;
+}
+
+// Resolves a raw fixture team-code field to a real team name, checking the
+// user's predictions first and falling back to the real resolver (which
+// covers already-decided matches, group codes, and 3rd-place codes).
+function resolvePredictedTeam(code) {
+  if (!code) return { name:'?', resolved:false };
+  if (TEAM_LOOKUP[code]) return { name:code, resolved:true };
+  const mW = code.match(/^W(\d+)$/);
+  if (mW) {
+    const pred = bracketPredictions[parseInt(mW[1])];
+    if (pred) return { name: pred.winner, resolved:true };
+    const real = resolveSlotCode(code);
+    return { name: real.name, resolved: real.resolved };
+  }
+  const mL = code.match(/^L(\d+)$/);
+  if (mL) {
+    const pred = bracketPredictions[parseInt(mL[1])];
+    if (pred) return { name: pred.loser, resolved:true };
+    const real = resolveSlotCode(code);
+    return { name: real.name, resolved: real.resolved };
+  }
+  const real = resolveSlotCode(code);
+  return { name: real.name, resolved: real.resolved };
+}
+
+// Clears any prediction that no longer matches the two teams its match would
+// actually be contested between, given the current state of every other
+// prediction. Repeats until stable, so changing an early pick cascades
+// forward and clears everything downstream of it — and only that.
+function prunePredictions() {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    getPredictionSlots().forEach(slot => {
+      const existing = bracketPredictions[slot.id];
+      if (!existing) return;
+      const ra = resolvePredictedTeam(slot.fixture.teamA);
+      const rb = resolvePredictedTeam(slot.fixture.teamB);
+      const stillValid = ra.resolved && rb.resolved &&
+        ((existing.winner === ra.name && existing.loser === rb.name) ||
+         (existing.winner === rb.name && existing.loser === ra.name));
+      if (!stillValid) {
+        delete bracketPredictions[slot.id];
+        changed = true;
+      }
+    });
+  }
+}
+
+function pickPredictedWinner(slotId, winnerName, loserName, isFinal, isThird) {
+  bracketPredictions[slotId] = { winner: winnerName, loser: loserName, isFinal, isThird };
+  prunePredictions();
+  renderPredictBracket();
+}
+
+function resetPredictions() {
+  bracketPredictions = {};
+  renderPredictBracket();
+}
+
+function computePredictedLeaderboard() {
+  const hypotheticalScores = {};
+  ALL_TEAMS.forEach(t => { hypotheticalScores[t.name] = teamTotal(t.name); });
+  Object.values(bracketPredictions).forEach(pred => {
+    hypotheticalScores[pred.winner] += pred.isFinal ? 3+8 : pred.isThird ? 3+2 : 3;
+    if (pred.isFinal) hypotheticalScores[pred.loser] += 4; // runner-up bonus despite losing
+  });
+  return PARTICIPANTS.map(p => ({
+    name: p,
+    pts: ALLOCATION[p].reduce((s,t) => s + hypotheticalScores[t.name], 0)
+  })).sort((a,b) => b.pts - a.pts);
+}
+
+function pkRoundLabel(roundName, idxInRound, totalInRound) {
+  const map = { 'Round of 32':'Round of 32', 'Round of 16':'Round of 16', 'Quarter-final':'Quarter-Final', 'Semi-final':'Semi-Final' };
+  if (roundName === 'Match for third place') return '3rd Place Play-off';
+  if (roundName === 'Final') return 'Final';
+  return map[roundName] || roundName;
+}
+
+function renderPredictBracket() {
+  const roundsEl = document.getElementById('pkRounds');
+  const summaryEl = document.getElementById('pkSummary');
+  const summaryRowsEl = document.getElementById('pkSummaryRows');
+  const countEl = document.getElementById('pkPickCount');
+  if (!roundsEl) return;
+
+  const slots = getPredictionSlots();
+
+  // Only render slots whose two teams are currently resolvable — either
+  // real already, or resolvable through predictions made so far. Slots
+  // still waiting on an earlier pick simply don't appear yet.
+  const pickable = slots.map(slot => {
+    const ra = resolvePredictedTeam(slot.fixture.teamA);
+    const rb = resolvePredictedTeam(slot.fixture.teamB);
+    return { slot, ra, rb, ready: ra.resolved && rb.resolved };
+  }).filter(x => x.ready);
+
+  if (pickable.length === 0) {
+    roundsEl.innerHTML = '<div class="pk-empty">No knockout matches left to predict — the tournament is decided!</div>';
+    summaryEl.style.display = 'none';
+    countEl.textContent = '';
+    return;
+  }
+
+  const pickedCount = Object.keys(bracketPredictions).length;
+  countEl.textContent = `${pickedCount} / ${pickable.length} matches predicted`;
+
+  // Group by round for display, preserving round progression order.
+  const byRound = {};
+  pickable.forEach(x => {
+    if (!byRound[x.slot.roundName]) byRound[x.slot.roundName] = [];
+    byRound[x.slot.roundName].push(x);
+  });
+
+  roundsEl.innerHTML = Object.entries(byRound).map(([roundName, items]) => `
+    <div>
+      <div class="pk-round-label">${pkRoundLabel(roundName)}</div>
+      <div class="pk-round-grid">
+        ${items.map(({slot, ra, rb}) => {
+          const existing = bracketPredictions[slot.id];
+          const personA = personForTeam(ra.name), personB = personForTeam(rb.name);
+          function row(team, person) {
+            const isWinner = existing && existing.winner === team;
+            const isLoser  = existing && existing.loser === team;
+            const cls = isWinner ? 'picked' : isLoser ? 'not-picked' : '';
+            const other = team === ra.name ? rb.name : ra.name;
+            return `<button type="button" class="pk-pick-row ${cls}"
+              onclick="pickPredictedWinner('${slot.id}','${team.replace(/'/g,"\\'")}','${other.replace(/'/g,"\\'")}',${slot.isFinal},${slot.isThird})">
+              <span class="pk-flag">${getFlag(team)}</span>
+              <span class="pk-name">${team}</span>
+              ${person ? `<span class="pk-owner">${person}</span>` : ''}
+              <span class="pk-check">${isWinner ? '✓' : ''}</span>
+            </button>`;
+          }
+          const tag = slot.isFinal ? 'FINAL' : slot.isThird ? '3RD PLACE PLAY-OFF' : '';
+          const dateStr = slot.fixture.date
+            ? new Date(slot.fixture.date).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})
+            : '';
+          const timeStr = slot.fixture.time || '';
+          const headerInner = tag
+            ? `<span class="pk-slot-tag">${tag}</span>${dateStr ? `<span style="margin-left:auto;color:rgba(249,245,232,0.3)">${dateStr}${timeStr ? ' \xb7 '+timeStr : ''}</span>` : ''}`
+            : `<span style="color:rgba(249,245,232,0.3)">${dateStr}${timeStr ? ' \xb7 '+timeStr : ''}</span>`;
+          const headerHtml = (tag || dateStr || timeStr)
+            ? `<div class="pk-slot-header">${headerInner}</div>` : '';
+          return `<div class="pk-slot${existing ? ' pk-decided' : ''}">
+            ${headerHtml}
+            ${row(ra.name, personA)}
+            ${row(rb.name, personB)}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  if (pickedCount === 0) {
+    summaryEl.style.display = 'none';
+    return;
+  }
+
+  const currentStandings = PARTICIPANTS.map(p => ({ name:p, pts: personTotal(p) })).sort((a,b)=>b.pts-a.pts);
+  const currentRankMap = {};
+  currentStandings.forEach((p,i) => { currentRankMap[p.name] = i+1; });
+
+  const predicted = computePredictedLeaderboard();
+  summaryEl.style.display = '';
+  summaryRowsEl.innerHTML = predicted.map((p, i) => {
+    const rank = i+1;
+    const curr = currentRankMap[p.name];
+    const delta = curr - rank;
+    const deltaHtml = delta > 0
+      ? `<span class="pk-summary-delta up">▲${delta}</span>`
+      : delta < 0
+      ? `<span class="pk-summary-delta down">▼${Math.abs(delta)}</span>`
+      : `<span class="pk-summary-delta same">–</span>`;
+    return `<div class="pk-summary-row${rank===1?' leader':''}">
+      <span class="pk-summary-rank">${rank}</span>
+      <span class="pk-summary-person">${p.name}</span>
+      <span class="pk-summary-pts">${p.pts}<span style="font-size:10px;font-weight:400;color:rgba(249,245,232,0.35)">pts</span></span>
+      ${deltaHtml}
+    </div>`;
+  }).join('');
 }
 
 
