@@ -3343,7 +3343,7 @@ function populateFixtureFilters() {
     opt.textContent = `${t.flag} ${t.name}`;
     teamSelect.appendChild(opt);
   });
-  PARTICIPANTS.forEach(p => {
+  [...PARTICIPANTS].sort((a,b) => a.localeCompare(b)).forEach(p => {
     const opt = document.createElement('option');
     opt.value = p;
     opt.textContent = p;
@@ -3692,7 +3692,7 @@ function renderLeaderboard() {
 }
 
 function renderScorecards() {
-  document.getElementById('scorecardsContainer').innerHTML = PARTICIPANTS.map(person => {
+  document.getElementById('scorecardsContainer').innerHTML = [...PARTICIPANTS].sort((a,b) => a.localeCompare(b)).map(person => {
     const teams = ALLOCATION[person];
     const pTotal = personTotal(person);
     const personFavourite = favouriteTeamForPerson(person);
@@ -4626,7 +4626,7 @@ function populateH2HSelects() {
   const curA = selA.value, curB = selB.value;
   [selA, selB].forEach(sel => {
     sel.innerHTML = '<option value="">Select player…</option>';
-    PARTICIPANTS.forEach(p => {
+    [...PARTICIPANTS].sort((a,b) => a.localeCompare(b)).forEach(p => {
       const opt = document.createElement('option');
       opt.value = p; opt.textContent = p;
       sel.appendChild(opt);
