@@ -1905,11 +1905,27 @@ function favouriteTeamForPerson(personName) {
   }, null);
 }
 
+function isInThirdPlaceMatch(teamName) {
+  const thirdFix = FIXTURES.find(f => f.round === 'Match for third place');
+  if (!thirdFix || !(thirdFix.scoreA === null || thirdFix.scoreA === undefined)) return false;
+  const r3a = resolveSlotCode(thirdFix.teamA);
+  const r3b = resolveSlotCode(thirdFix.teamB);
+  return (r3a.resolved && r3a.name === teamName) || (r3b.resolved && r3b.name === teamName);
+}
+
 function maxRemainingPointsForTeam(teamName, isFavourite) {
   if (isEliminated(teamName)) return 0;
+
+  // A team in the 3rd place match has exactly one remaining fixture with its own bonus structure.
+  if (isInThirdPlaceMatch(teamName)) return 3 + 2; // match win (+3) + 3rd place bonus (+2)
+
   const koRoundsBeforeFinal = ['Rd32','Rd16','QF','SF'];
   let remaining = 0;
-  koRoundsBeforeFinal.forEach(r => { if (getScore(teamName, r) === 0) remaining += 3; });
+  // Use isRoundPending rather than getScore===0 so that a played-and-lost round
+  // (which also scores 0) is not mistakenly counted as a future opportunity.
+  koRoundsBeforeFinal.forEach(r => {
+    if (getScore(teamName, r) === 0 && isRoundPending(teamName, r)) remaining += 3;
+  });
 
   const finalAlreadyDecided = getScore(teamName, 'Final') > 0; // already won the real Final
   if (finalAlreadyDecided) return remaining; // nothing more to add, already realised
@@ -1959,15 +1975,25 @@ function personHasSameOwnerClash(personName) {
 const KO_ROUND_LABEL = { Rd32:'R32', Rd16:'R16', QF:'QF', SF:'SF' };
 function maxPointsPathForTeam(teamName, isFavourite) {
   if (isEliminated(teamName)) return null;
+
+  // SF losers are in the 3rd place match — their only remaining path is that one game.
+  if (isInThirdPlaceMatch(teamName)) return 'wins 3rd place match (+3; +2 bonus)';
+
   const steps = [];
   ['Rd32','Rd16','QF','SF'].forEach(r => {
-    if (getScore(teamName, r) === 0) steps.push(`${KO_ROUND_LABEL[r]} (+3)`);
+    // Use isRoundPending so a played-and-lost round (score 0) isn't shown as a future step.
+    if (getScore(teamName, r) === 0 && isRoundPending(teamName, r)) steps.push(`${KO_ROUND_LABEL[r]} (+3)`);
   });
   if (getScore(teamName, 'Final') > 0) {
     return steps.length ? `wins ${steps.join(', ')}` : null; // already won it all, nothing left
   }
   steps.push(isFavourite ? 'Final (+3; +8 bonus)' : 'reaches Final but loses it (+4 bonus)');
-  return `wins ${steps.join(', ')}`;
+  // Only prefix "wins" when there are KO rounds left to win, or when the team
+  // IS the favourite (then "wins Final" reads naturally). A non-favourite team
+  // that has already won all prior rounds shows "reaches Final but loses it"
+  // without the "wins" prefix, which reads correctly on its own.
+  const needsWinsPrefix = steps.length > 1 || isFavourite;
+  return (needsWinsPrefix ? 'wins ' : '') + steps.join(', ');
 }
 
 // A round is "pending" for a team if its fixture is scheduled (exists
@@ -3499,6 +3525,15 @@ function buildKoEliminatedSet() {
     else if (f.scoreB > f.scoreA)  loser = ra.name;
     else if (f.pensA != null)      loser = f.pensA > f.pensB ? rb.name : ra.name;
     if (loser) eliminated.add(loser);
+  }
+  // SF losers feed into the 3rd place match, so they are NOT fully eliminated
+  // until that match is also played. Remove them from the set while it is pending.
+  const thirdFix = FIXTURES.find(f => f.round === 'Match for third place');
+  if (thirdFix && (thirdFix.scoreA === null || thirdFix.scoreA === undefined)) {
+    const r3a = resolveSlotCode(thirdFix.teamA);
+    const r3b = resolveSlotCode(thirdFix.teamB);
+    if (r3a.resolved) eliminated.delete(r3a.name);
+    if (r3b.resolved) eliminated.delete(r3b.name);
   }
   return eliminated;
 }
